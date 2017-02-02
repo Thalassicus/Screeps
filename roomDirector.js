@@ -83,18 +83,18 @@ Room.prototype.doSpawns = function(){
 	
 	if (!this.memory.isGrowing){
 		// Assign haulers
-		if (this.getJobCount("haul") < this.getJobMax("haul")){
+		if (numDoingJob["haul"] < this.getJobMax("haul")){
 			if (this.createPerson("haul")) return true
 		}
 		
 		// Assign guards
-		if (this.getJobCount("attackMelee") < this.getJobMax("attackMelee")){
+		if (numDoingJob["attackMelee"] < this.getJobMax("attackMelee")){
 			if (this.createPerson("attackMelee")) return true
 		}
-		if (this.getJobCount("attackRanged") < this.getJobMax("attackRanged")){
+		if (numDoingJob["attackRanged"] < this.getJobMax("attackRanged")){
 			if (this.createPerson("attackRanged")) return true
 		}
-		if (this.getJobCount("heal") < this.getJobMax("heal")){
+		if (numDoingJob["heal"] < this.getJobMax("heal")){
 			if (this.createPerson("heal")) return true
 		}
 	}

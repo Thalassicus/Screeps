@@ -209,7 +209,7 @@ Creep.prototype.setJob = function(jobType, isJobPermanent){
 	this.room.changeJobCount(jobType, 1)
 	
 	if (this.memory.priorities != undefined){
-		this.setTask()//priorities[priorities.length-1].key)
+		this.setTask() //priorities[priorities.length-1].key)
 	}
 }
 
