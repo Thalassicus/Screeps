@@ -534,7 +534,7 @@ module.exports.canContinueHarvestFar = function(person) {
 	}
 	let targetID = person.memory.targetID
 	if (targetID && Game.getObjectById(targetID) && Game.getObjectById(targetID).energy <= 0) {
-		//console.log("TRACE: "+person.name+" stop harvestFar in "+person.room+" (source is empty)")
+		console.log("TRACE: "+person.name+" stop harvestFar in "+person.room+" (source is empty)")
 		return false
 	}
 	
@@ -795,7 +795,7 @@ module.exports.tasks.wall = {
 
 // Energize
 module.exports.canStartEnergize = function(person) {
-	if (person.room.memory.numHostiles == 0 && person.getJob() != "haul" && person.room.getJobCount("haul") > 0) return false
+	if (person.room.memory.numHostiles == 0 && person.getJobType() != "haul" && person.room.getJobCount("haul") > 0) return false
 	return this.canContinue(person)
 }
 module.exports.canContinueEnergize = function(person) {
@@ -997,7 +997,6 @@ module.exports.tasks.recycle = {
 // Salvage
 module.exports.canStartSalvage = function(person) {
 	return this.canContinue(person)
-
 }
 module.exports.canContinueSalvage = function(person) {
 	let homeRoom = Game.rooms[person.memory.homeRoomName]

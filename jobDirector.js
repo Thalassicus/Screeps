@@ -21,6 +21,7 @@ Memory.defaultJobPriorities = {
 		{"key": "idle",      	"value": 0},
 	],
 	normal: [
+		{"key": "salvage",   	"value": 3},
 		{"key": "energize",  	"value": 8},
 		{"key": "repairCritical","value": 9},
 		{"key": "upgrade",   	"value": 1},
@@ -32,7 +33,6 @@ Memory.defaultJobPriorities = {
 		{"key": "harvest",   	"value": 2},
 		{"key": "harvestFar",	"value": 2},
 		{"key": "storeGet",  	"value": 1},
-		{"key": "salvage",   	"value": 3},
 		{"key": "upgradeFallback","value": 1},
 		{"key": "idle",      	"value": 0},
 	],
@@ -127,6 +127,7 @@ Room.prototype.setTaskLimits = function() {
 		"guardPost":    999,
 		"recycle":    	999,
 	}
+	console.log("DEBUG: memory.taskCount="+memory.taskCount+" for "+this)
 	for (i=0; i<this.memory.people.length; i++){
 		let person = Game.creeps[this.memory.people[i]]
 		if (person && person.getTask()){
@@ -164,14 +165,14 @@ Room.prototype.setJobLimits = function() {
 	if (this.memory.people){
 		for (i=0; i<this.memory.people.length; i++){
 			let person = Game.creeps[this.memory.people[i]]
-			if (person && person.getJob()){
-				this.changeJobCount(person.getJob(), 1)
+			if (person && person.getJobType()){
+				this.changeJobCount(person.getJobType(), 1)
 			}
 		}
 	}
 }
 
-Creep.prototype.getJob = function(){
+Creep.prototype.getJobType = function(){
 	if (!this.memory.jobType) {
 		this.setJob()
 	}

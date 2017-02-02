@@ -19,7 +19,7 @@ Room.prototype.createPerson = function(jobName, info){
 			break
 			
 		default:
-			//console.log("DEBUG createPerson: "+personName+" with "+jobName+" job.")
+			console.log("DEBUG createPerson: "+personName+" with "+jobName+" job.")
 			break
 	}
 	
@@ -55,7 +55,7 @@ Room.prototype.doSpawns = function(){
 	if (spawner == undefined) return
 	if (this.memory.isGrowing == undefined) this.memory.isGrowing = true
 	
-	//console.log("TRACE: "+numPeople+"/"+Memory.targetPeople+" people in "+this.name)
+	//console.log("TRACE: "+numPeople+"/"+this.memory.maxPeople+" people in "+this.name)
 	
 	//this.memory.isGrowing = true
 	this.checkIsGrowing()
@@ -77,11 +77,11 @@ Room.prototype.doSpawns = function(){
 	for (i=0; i<this.memory.people.length; i++){
 		let person = Game.creeps[this.memory.people[i]]
 		if (person && person.ticksToLive > 2*retirementAge) {
-			numDoingJob[person.getJob()] += 1
+			numDoingJob[person.getJobType()] += 1
 		}
 	}
 	
-	if (!this.memory.isGrowing){
+	if (this.energyAvailable > 500 && !this.memory.isGrowing){
 		// Assign haulers
 		if (numDoingJob["haul"] < this.getJobMax("haul")){
 			if (this.createPerson("haul")) return true
@@ -109,17 +109,47 @@ Room.prototype.doSpawns = function(){
 	}
 	
 	// Assign temp jobs
-	if (this.memory.numPeople >= Memory.targetPeople) return
+	if (numPeople >= this.memory.maxPeople) {
+		let [oldestWorker, oldestWorkerCost] = this.getOldestWorkerCost()
+		if (oldestWorkerCost < this.energyAvailable){
+			console.log("DEBUG getOldestWorkerCost: "+oldestWorker+" costs "+oldestWorkerCost+"/"+this.energyAvailable+".")
+		}
+		return
+	}
 	
-	if (this.createPerson(this.memory.isGrowing && "grow" || "normal")) return true
+	if (this.createPerson(this.memory.isGrowing && "grow" || "normal")) {
+		console.log("INFO: "+numPeople+"/"+this.memory.maxPeople+" people in "+this)
+		return true
+	}
 	
 	return false
+}
+
+Room.prototype.getOldestWorkerCost = function(){
+	let oldestWorker = null
+	let oldestAge = 0
+	for (i=0; i<this.memory.people.length; i++){
+		let person = Game.creeps[this.memory.people[i]]
+		if (person && person.ticksToLive > oldestAge && _.includes(["normal","grow"], person.getJobType())) {
+			oldestAge = person.ticksToLive
+			oldestWorker = person
+		}
+	}
+	
+	let cost = 0
+	let body = []
+	for (i=0; i<oldestWorker.body.length; i++){
+		let partType = oldestWorker.body[i].type
+		cost += BODYPART_COST[partType]
+		body.push(partType)
+	}
+	return [oldestWorker.name, cost]
 }
 
 Room.prototype.getBodyParts = function(job){
 	let numPeople = this.countNumPeople()
 	let scale = 1
-	let maxPersonCost = Math.min(this.energyCapacityAvailable, 3000) * (scale * (numPeople+1) / Memory.targetPeople)
+	let maxPersonCost = Math.min(this.energyCapacityAvailable, 3000) * (scale * (numPeople+1) / this.memory.maxPeople)
 	maxPersonCost = Math.max(200, Math.min(maxPersonCost, this.energyCapacityAvailable))
 	let personParts = []
 	let personCost = 0
@@ -133,6 +163,15 @@ Room.prototype.getBodyParts = function(job){
 		case "normal":
 			count = Math.floor(Math.min(50/3, maxPersonCost / 200))
 			personCost = count * 200
+			if (maxPersonCost == 300){
+				// spawner with 0 extensions
+				personParts.push(CARRY)
+				personParts.push(MOVE)
+			} else if (maxPersonCost == 350){
+				// spawner with 1 extension
+				personParts.push(WORK)
+				personParts.push(MOVE)
+			}
 			for (i=0; i<count; i++){
 				personParts.push(WORK)
 				personParts.push(CARRY)
@@ -152,7 +191,7 @@ Room.prototype.getBodyParts = function(job){
 			break
 			
 		case "attackMelee":
-			count = Math.floor(Math.min((50-3)/4, (0.5*maxPersonCost-200) / 190))
+			count = Math.floor(Math.min((50-3)/4, (maxPersonCost-200) / 190))
 			
 			for (i=0; i<count; i++){
 				personParts.push(TOUGH)
@@ -166,12 +205,10 @@ Room.prototype.getBodyParts = function(job){
 			personParts.push(WORK)
 			personParts.push(CARRY)
 			personParts.push(MOVE)
-			//console.log("DEBUG getBodyParts: energy="+this.energyCapacityAvailable+" numPeople="+numPeople+" targetPeople="+Memory.targetPeople+" maxPersonCost="+maxPersonCost+" personCost="+personCost)
-			//console.log("DEBUG                   personParts="+personParts)
 			break
 			
 		case "attackRanged":
-			count = Math.floor(Math.min((50-3)/2, (0.5*maxPersonCost-200) / 200))
+			count = Math.floor(Math.min((50-3)/2, (maxPersonCost-200) / 200))
 			
 			for (i=0; i<count; i++){
 				personParts.push(MOVE)
@@ -183,12 +220,12 @@ Room.prototype.getBodyParts = function(job){
 			personParts.push(WORK)
 			personParts.push(CARRY)
 			personParts.push(MOVE)
-			//console.log("DEBUG getBodyParts: energy="+this.energyCapacityAvailable+" numPeople="+numPeople+" targetPeople="+Memory.targetPeople+" maxPersonCost="+maxPersonCost+" personCost="+personCost)
+			//console.log("DEBUG getBodyParts: energy="+this.energyCapacityAvailable+" numPeople="+numPeople+" targetPeople="+this.memory.maxPeople+" maxPersonCost="+maxPersonCost+" personCost="+personCost)
 			//console.log("DEBUG                   personParts="+personParts)
 			break
 			
 		case "heal":
-			count = Math.floor(Math.min((50-3)/2, (0.5*maxPersonCost-200) / 300))
+			count = Math.floor(Math.min((50-3)/2, (maxPersonCost-200) / 300))
 			
 			for (i=0; i<count; i++){
 				personParts.push(MOVE)
@@ -200,7 +237,7 @@ Room.prototype.getBodyParts = function(job){
 			personParts.push(WORK)
 			personParts.push(CARRY)
 			personParts.push(MOVE)
-			//console.log("DEBUG getBodyParts: energy="+this.energyCapacityAvailable+" numPeople="+numPeople+" targetPeople="+Memory.targetPeople+" maxPersonCost="+maxPersonCost+" personCost="+personCost)
+			//console.log("DEBUG getBodyParts: energy="+this.energyCapacityAvailable+" numPeople="+numPeople+" targetPeople="+this.memory.maxPeople+" maxPersonCost="+maxPersonCost+" personCost="+personCost)
 			//console.log("DEBUG                   personParts="+personParts)
 			break
 			
@@ -221,7 +258,7 @@ Room.prototype.doTasks = function(){
 		}
 		
 		
-		if (person.ticksToLive < retirementAge && person.getJob() != "recycle"){
+		if (person.ticksToLive < retirementAge && person.getJobType() != "recycle"){
 			person.setJob("recycle", true)
 			continue
 		}
@@ -282,7 +319,7 @@ Room.prototype.countNumPeople = function(){
 	let numPeople = 0
 	for (i=0; i<this.memory.people.length; i++){
 		let person = Game.creeps[this.memory.people[i]]
-		if (person && (person.getJob() != "scout")) {
+		if (person && (person.getJobType() != "scout")) {
 			numPeople++
 		}
 	}
@@ -300,9 +337,11 @@ Room.prototype.findRepairTower = function(){
 	let closestTower = towers[0]
 	let closestDistance = 9999
 	
-	if (towers.length <= 1) {
+	if (towers.length == 0) {
+		return false
+	} else if (towers.length == 1) {
 		this.memory.repairTowerID = closestTower.id
-		return
+		return true
 	}
 	
 	for (i=0; i<towers.length; i++){
@@ -321,7 +360,11 @@ Room.prototype.repairWithTowers = function() {
 	if (this.memory.isGrowing == true) return
 	
 	let tower = Game.structures[this.memory.repairTowerID]
-	if (!tower) this.findRepairTower()
+	if (!tower) {
+		this.findRepairTower()
+		tower = Game.structures[this.memory.repairTowerID]
+		if (!tower) return false
+	}
 		
 	if (tower.energy < 0.25 * tower.energyCapacity) return
 	
@@ -387,17 +430,17 @@ Room.prototype.countHarvestSpots = function(){
 
 Room.prototype.checkIsGrowing = function(){	
 	let numPeople = this.countNumPeople()
-	if (numPeople < 0.5 * Memory.targetPeople){
+	if (numPeople < 0.5 * this.memory.maxPeople){
 		if (!this.memory.isGrowing) {
 			this.memory.isGrowing = true
-			console.log("INFO:  Grow room "+this.name+" ("+numPeople+"/"+Memory.targetPeople+")")
+			console.log("INFO:  Grow room "+this.name+" ("+numPeople+"/"+this.memory.maxPeople+")")
 			this.setJobLimits()
 			this.setTaskLimits()
 			this.resetPeople()
 		}
-	} else if (this.memory.isGrowing && numPeople > 2 + 0.5 * Memory.targetPeople) {
+	} else if (this.memory.isGrowing && numPeople > 2 + 0.5 * this.memory.maxPeople) {
 		this.memory.isGrowing = false
-		console.log("INFO:  Stop growing room "+this.name+" ("+numPeople+"/"+Memory.targetPeople+")")
+		console.log("INFO:  Stop growing room "+this.name+" ("+numPeople+"/"+this.memory.maxPeople+")")
 		this.setJobLimits()
 		this.setTaskLimits()
 		this.resetPeople()

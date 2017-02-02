@@ -6,7 +6,6 @@ require("sprintf")
  
 var _ = require("lodash")
 
-Memory.targetPeople = Memory.targetPeople || 18
 Memory.scouts = Memory.scouts || {}
 Memory.sources = Memory.sources || {}
 
@@ -17,11 +16,9 @@ for (let roomName in Memory.rooms) delete Memory.rooms[roomName].numCreeps
 
 
 module.exports.loop = function () {
-	//*
     for (let roomName in Game.rooms) {
 		room = Game.rooms[roomName]
-		room.memory.people = room.memory.people || room.memory.creeps
-		room.memory.creeps = undefined
+		room.memory.people = room.memory.people || room.memory.creeps || {}
 	}
 	
 	//taskDirector.start()
@@ -30,12 +27,19 @@ module.exports.loop = function () {
     for (let name in Memory.creeps) {
         if (Game.creeps[name] == undefined) {
 			clearDeadPeople()
+			for (let roomName in Game.rooms) {
+				if (room.controller.my){
+					room.memory.maxPeople = Math.floor(6 + 1.5 * room.controller.level)
+				}else{
+					room.memory.maxPeople = 0
+				}
+				
+			}
 			break
         }
     }
 	
 	if (Game.time % 10 == 0){
-		Memory.targetPeople = 18
 		validateRarely()
 	}
 	
@@ -150,6 +154,10 @@ function validateRarely(){
 			room.findRepairTower()
 		}
 		
+		if (!room.memory.taskCount) room.resetAll()
+			
+		if (!room.memory.taskCount) console.log("ERROR: "+room+" has no taskCount array!")
+		
 		
 		if (room.memory.people){
 			// validate task list
@@ -166,7 +174,7 @@ function validateRarely(){
 				let person = Game.creeps[room.memory.people[i]]
 				if (person) {
 					numDoingTask[person.getTask()] += 1
-					numDoingJob[person.getJob()] += 1
+					numDoingJob[person.getJobType()] += 1
 					if (person.getTask() == "farHarvest"){
 						numAtSource[person.targetID] += 1
 					}
@@ -220,7 +228,7 @@ function validateRarely(){
 				let createScout = (room == undefined)
 				if (room){
 					let scoutsInRoom = room.find(FIND_MY_CREEPS, {filter: (o) =>
-						   o.getJob() == "scout"
+						   o.getJobType() == "scout"
 						&& o.memory.targetRoom == roomName
 					})
 					if (scoutsInRoom.length == 0) {
@@ -286,9 +294,9 @@ StructureSpawn.prototype.resetAll = function(){
 }
 
 Room.prototype.resetAll = function(){
+	this.setTaskLimits()
+	this.setJobLimits()
 	if (this.controller.my){
-		this.setJobLimits()
-		this.setTaskLimits()
 		this.setWallMax()
 		this.resetPeople()
 	}
@@ -305,9 +313,9 @@ Room.prototype.resetPeople = function(){
             console.log("Person "+personName+" is undefined!")
 			clearDeadPeople()
         } else {
-			if (this.memory.isGrowing && person.getJob() == "normal") {
+			if (this.memory.isGrowing && person.getJobType() == "normal") {
 				person.setJob("grow")
-			}else if (!this.memory.isGrowing && person.getJob() == "grow"){
+			}else if (!this.memory.isGrowing && person.getJobType() == "grow"){
 				person.setJob("normal")
 			}else{
 				person.setJob()
