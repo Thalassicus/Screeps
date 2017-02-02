@@ -345,15 +345,18 @@ module.exports.tasks.heal = {
 
 // GuardPost
 module.exports.canStartGuardPost = function(person) {
-	return Game.flags.Defenders1
+	return Game.flags.Guard1
 }
 module.exports.canContinueGuardPost = function(person) {
 	return false
 }
 module.exports.doGuardPost = function(person) {
-	let target = Game.flags.Defenders1
+	let target = Game.flags.Guard1
 	
-	if (typeof target != "object") return ERR_NOT_FOUND
+	if (typeof target != "object") {
+		console.log("TRACE doGuardPost: Could not find Guard1 flag.")
+		return ERR_NOT_FOUND
+	}
 	//Memory.targetOf[target.id] = person.getTask()
 
 	let range = person.pos.getRangeTo(target)

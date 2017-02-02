@@ -127,7 +127,7 @@ Room.prototype.setTaskLimits = function() {
 		"guardPost":    999,
 		"recycle":    	999,
 	}
-	console.log("DEBUG: memory.taskCount="+memory.taskCount+" for "+this)
+	console.log("DEBUG: memory.taskCount="+this.memory.taskCount+" for "+this)
 	for (i=0; i<this.memory.people.length; i++){
 		let person = Game.creeps[this.memory.people[i]]
 		if (person && person.getTask()){

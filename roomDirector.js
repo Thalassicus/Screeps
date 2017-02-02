@@ -81,9 +81,14 @@ Room.prototype.doSpawns = function(){
 		}
 	}
 	
+	
+	
 	if (this.energyAvailable > 500 && !this.memory.isGrowing){
 		// Assign haulers
-		if (numDoingJob["haul"] < this.getJobMax("haul")){
+		let roomHasStorage = this.find(FIND_STRUCTURES, {filter: (t) => 
+				   t.structureType == STRUCTURE_CONTAINER || t.structureType == STRUCTURE_STORAGE
+				}).length > 0
+		if (roomHasStorage && numDoingJob["haul"] < this.getJobMax("haul")){
 			if (this.createPerson("haul")) return true
 		}
 		
@@ -110,9 +115,10 @@ Room.prototype.doSpawns = function(){
 	
 	// Assign temp jobs
 	if (numPeople >= this.memory.maxPeople) {
-		let [oldestWorker, oldestWorkerCost] = this.getOldestWorkerCost()
-		if (oldestWorkerCost < this.energyAvailable){
-			console.log("DEBUG getOldestWorkerCost: "+oldestWorker+" costs "+oldestWorkerCost+"/"+this.energyAvailable+".")
+		let [oldestWorkerName, oldestWorkerCost] = this.getOldestWorkerCost()
+		if (oldestWorkerCost < 0.5*this.energyAvailable){
+			console.log("DEBUG getOldestWorkerCost: "+oldestWorkerName+" costs "+oldestWorkerCost+"/"+0.5*this.energyAvailable+".")
+			Game.creeps[oldestWorkerName].setJob("recycle")
 		}
 		return
 	}
@@ -319,7 +325,7 @@ Room.prototype.countNumPeople = function(){
 	let numPeople = 0
 	for (i=0; i<this.memory.people.length; i++){
 		let person = Game.creeps[this.memory.people[i]]
-		if (person && (person.getJobType() != "scout")) {
+		if (person && !_.includes(["scout","recycle"],person.getJobType())) {
 			numPeople++
 		}
 	}
