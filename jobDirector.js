@@ -13,70 +13,76 @@ module.exports = {
 
 Memory.defaultJobPriorities = {
 	haul: [
-		{"key": "salvage",   	"value": 3},
+		{"key": "salvage",   	"value": 8},
 		{"key": "energize",  	"value": 8},
-		{"key": "goHome",	 	"value": 2},
-		{"key": "storeAdd",  	"value": 7},
-		{"key": "storeGet",  	"value": 1},
-		{"key": "idle",      	"value": 0},
+		{"key": "goHome",	 	"value": 8},
+		{"key": "storeAdd",  	"value": 8},
+		{"key": "storeGet",  	"value": 8},
+		{"key": "idle",      	"value": 8},
 	],
 	normal: [
-		{"key": "salvage",   	"value": 3},
+		{"key": "salvage",   	"value": 8},
 		{"key": "energize",  	"value": 8},
-		{"key": "repairCritical","value": 9},
-		{"key": "upgrade",   	"value": 1},
-		{"key": "build",     	"value": 6},
-		{"key": "repair",    	"value": 9},
-		{"key": "wall",   	 	"value": 5},
-		{"key": "goHome",	 	"value": 2},
-		{"key": "storeAdd",  	"value": 7},
-		{"key": "harvest",   	"value": 2},
-		{"key": "harvestFar",	"value": 2},
-		{"key": "storeGet",  	"value": 1},
-		{"key": "upgradeFallback","value": 1},
-		{"key": "idle",      	"value": 0},
+		{"key": "repairCritical","value": 8},
+		{"key": "upgrade",   	"value": 8},
+		{"key": "build",     	"value": 8},
+		{"key": "repair",    	"value": 8},
+		{"key": "wall",   	 	"value": 8},
+		{"key": "storeAdd",  	"value": 8},
+		{"key": "harvest",   	"value": 8},
+		{"key": "harvestFar",	"value": 8},
+		{"key": "goHome",	 	"value": 8},
+		{"key": "storeGet",  	"value": 8},
+		{"key": "upgradeFallback","value": 8},
+		{"key": "idle",      	"value": 8},
 	],
 	grow: [
 		{"key": "energize",  	"value": 8},
-		{"key": "repairCritical","value": 9},
-		{"key": "build",     	"value": 7},
-		{"key": "salvage",   	"value": 3},
-		{"key": "storeGet",  	"value": 2},
-		{"key": "harvest",   	"value": 1},
-		{"key": "storeAdd",	 	"value": 2},
-		{"key": "idle",      	"value": 0},
+		{"key": "repairCritical","value": 8},
+		{"key": "build",     	"value": 8},
+		{"key": "salvage",   	"value": 8},
+		{"key": "storeGet",  	"value": 8},
+		{"key": "harvest",   	"value": 8},
+		{"key": "storeAdd",	 	"value": 8},
+		{"key": "idle",      	"value": 8},
 	],
 	recycle: [
 		{"key": "energize",  	"value": 8},
-		{"key": "storeAdd",  	"value": 7},
+		{"key": "storeAdd",  	"value": 8},
 		{"key": "recycle",	 	"value": 8},
+		{"key": "idle",  	 	"value": 8},
 	],
 	scout: [
 		{"key": "scout",  	 	"value": 8},
+		{"key": "idle",  	 	"value": 8},
+	],
+	reserve: [
+		{"key": "reserve",   	"value": 8},
+		{"key": "idle",      	"value": 8},
 	],
 	attackMelee: [
-		{"key": "attackMelee",  "value": 10},
-		{"key": "heal",    	 	"value": 10},
-		{"key": "salvage",   	"value": 3},
-		{"key": "storeAdd",  	"value": 7},
-		{"key": "goHome",	 	"value": 2},
+		{"key": "attackMelee",  "value": 80},
+		{"key": "heal",    	 	"value": 80},
+		{"key": "salvage",   	"value": 8},
+		{"key": "storeAdd",  	"value": 8},
+		{"key": "goHome",	 	"value": 8},
 		{"key": "guardPost", 	"value": 8},
 		{"key": "idle",  	 	"value": 8},
 	],
 	attackRanged: [
-		{"key": "attackRanged", "value": 10},
-		{"key": "heal",    	 	"value": 10},
-		{"key": "salvage",   	"value": 3},
-		{"key": "storeAdd",  	"value": 7},
-		{"key": "goHome",	 	"value": 2},
+		{"key": "attackRanged", "value": 80},
+		{"key": "heal",    	 	"value": 80},
+		{"key": "salvage",   	"value": 8},
+		{"key": "storeAdd",  	"value": 8},
+		{"key": "goHome",	 	"value": 8},
 		{"key": "guardPost", 	"value": 8},
 		{"key": "idle",  	 	"value": 8},
 	],
 	heal: [
-		{"key": "heal",    	 	"value": 10},
-		{"key": "salvage",   	"value": 3},
-		{"key": "storeAdd",  	"value": 7},
-		{"key": "goHome",	 	"value": 2},
+		{"key": "heal",    	 	"value": 80},
+		{"key": "salvage",   	"value": 8},
+		{"key": "storeAdd",  	"value": 8},
+		{"key": "goHome",	 	"value": 8},
 		{"key": "guardPost", 	"value": 8},
 		{"key": "idle",  	 	"value": 8},
 	],
@@ -102,6 +108,7 @@ Room.prototype.setTaskLimits = function() {
 		"idle":       	0,
 		"guardPost":    0,
 		"scout":      	0,
+		"reserve":      0,
 		"upgradeFallback": 0,
 		"recycle":    	0,
 	}
@@ -112,7 +119,7 @@ Room.prototype.setTaskLimits = function() {
 		"repair":     	2,
 		"wall":    	  	10,
 		"harvest":    	6,
-		"upgrade":    	1,
+		"upgrade":    	2,
 		"harvestFar": 	15,
 		"energize":   	5,
 		"goHome": 		999,
@@ -123,11 +130,12 @@ Room.prototype.setTaskLimits = function() {
 		"storeAdd":     999,
 		"storeGet":   	999,
 		"scout":      	999,
+		"reserve":      999,
 		"idle":      	999,
 		"guardPost":    999,
 		"recycle":    	999,
 	}
-	console.log("DEBUG: memory.taskCount="+this.memory.taskCount+" for "+this)
+	//console.log("DEBUG setTaskLimits: memory.taskCount="+this.memory.taskCount+" for "+this)
 	for (i=0; i<this.memory.people.length; i++){
 		let person = Game.creeps[this.memory.people[i]]
 		if (person && person.getTask()){
@@ -151,6 +159,7 @@ Room.prototype.setJobLimits = function() {
 		"grow":		0,
 		"recycle":	0,
 		"scout":	0,
+		"reserve":	0,
 	}
 	this.memory.jobMax = {
 		"attackMelee":  2,
@@ -161,18 +170,19 @@ Room.prototype.setJobLimits = function() {
 		"grow":		999,
 		"recycle":	999,
 		"scout":	999,
+		"reserve":	5,
 	}
 	if (this.memory.people){
 		for (i=0; i<this.memory.people.length; i++){
 			let person = Game.creeps[this.memory.people[i]]
-			if (person && person.getJobType()){
-				this.changeJobCount(person.getJobType(), 1)
+			if (person && person.getJob()){
+				this.changeJobCount(person.getJob(), 1)
 			}
 		}
 	}
 }
 
-Creep.prototype.getJobType = function(){
+Creep.prototype.getJob = function(){
 	if (!this.memory.jobType) {
 		this.setJob()
 	}
@@ -186,10 +196,13 @@ Creep.prototype.setJob = function(jobType, isJobPermanent){
 	this.memory.isJobPermanent = this.memory.isJobPermanent || isJobPermanent || false
 	
 	if (this.memory.isJobPermanent && jobType != "recycle"){
-		this.memory.priorities = Memory.defaultJobPriorities[this.memory.jobType]
+		this.memory.priorities = Memory.defaultJobPriorities[this.memory.jobType || jobType]
 	}else{
 		this.memory.priorities = Memory.defaultJobPriorities[jobType || this.memory.jobType]
-		//console.log("TRACE setJob: "+this.name+" priorities = "+this.memory.priorities)
+		//console.log("TRACE setJob: set priorities for "+this.name)
+	}
+	if (!this.memory.priorities){
+		console.log("WARN setJob: "+this.name+" priorities="+this.memory.priorities+" jobType="+jobType+" this.memory.jobType="+this.memory.jobType)
 	}
 	
 	if (this.memory.jobType && this.memory.isJobPermanent && jobType != "recycle") {

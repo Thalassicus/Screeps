@@ -3,7 +3,7 @@ var roomDirector = require("roomDirector")
 var taskDirector = require("taskDirector")
 var employers = require("employers")
 require("sprintf")
- 
+
 var _ = require("lodash")
 
 Memory.scouts = Memory.scouts || {}
@@ -12,10 +12,11 @@ Memory.sources = Memory.sources || {}
 Memory.guards = Memory.guards || {}
 Memory.hostiles = Memory.hostiles || []
 
-for (let roomName in Memory.rooms) delete Memory.rooms[roomName].numCreeps
-
+let stopAllScripts = false
 
 module.exports.loop = function () {
+	if (stopAllScripts) return
+	
     for (let roomName in Game.rooms) {
 		room = Game.rooms[roomName]
 		room.memory.people = room.memory.people || room.memory.creeps || {}
@@ -27,14 +28,6 @@ module.exports.loop = function () {
     for (let name in Memory.creeps) {
         if (Game.creeps[name] == undefined) {
 			clearDeadPeople()
-			for (let roomName in Game.rooms) {
-				if (room.controller.my){
-					room.memory.maxPeople = Math.floor(6 + 1.5 * room.controller.level)
-				}else{
-					room.memory.maxPeople = 0
-				}
-				
-			}
 			break
         }
     }
@@ -80,7 +73,11 @@ module.exports.loop = function () {
 		
 		room.doLinks()
 		room.doTasks()
-		room.doSpawns()
+		let result = room.doSpawns()
+		
+		if (!_.includes([OK, ERR_BUSY, ERR_NOT_ENOUGH_ENERGY], result)){
+			console.log("WARN: "+room.name+" doSpawns returned "+result+".")
+		}
 		
 		if (room.memory.repairTowerID == undefined) {
 			room.findRepairTower()
@@ -104,7 +101,7 @@ function clearDeadPeople(){
 			let homeRoom = Game.rooms[personMemory.homeRoomName]
 			//console.log("DEBUG: "+personName+" died, removing task "+personMemory.task+" from room "+personMemory.homeRoomName+".")
 			homeRoom.unassignTask(personName, personMemory.task)
-			if (personMemory.jobType != "recycle"){
+			if (!_.includes(["recycle","reserve","scout"], personMemory.jobType)){
 				console.log("DEBUG: "+personName+" died, removing job "+personMemory.jobType+" from room "+personMemory.homeRoomName+".")
 			}
 			homeRoom.unassignJob(personName, personMemory.jobType)
@@ -134,7 +131,6 @@ function clearDeadPeople(){
 		if (person && person.memory.jobType != "scout"){
 			console.log("WARN: scout "+person.name+" has job "+person.memory.jobType)
 			person.setJob("scout", true)
-			person.setTask()
 		}
 	}
 	validateRarely()
@@ -163,29 +159,29 @@ function validateRarely(){
 			// validate task list
 			let numDoingTask = {}
 			let numDoingJob = {}
-			let numAtSource = {}
+			/*
 			for (let taskName in taskDirector.tasks){
 				numDoingTask[taskName] = 0
 			}
+			*/
 			for (let jobName in Memory.defaultJobPriorities){
 				numDoingJob[jobName] = 0
 			}
 			for (i=0; i<room.memory.people.length; i++){
 				let person = Game.creeps[room.memory.people[i]]
 				if (person) {
-					numDoingTask[person.getTask()] += 1
-					numDoingJob[person.getJobType()] += 1
-					if (person.getTask() == "farHarvest"){
-						numAtSource[person.targetID] += 1
-					}
+					//numDoingTask[person.getTask()] += 1
+					numDoingJob[person.getJob()] += 1
 				}
 			}
+			/*
 			for (let taskName in numDoingTask){
-				if (numDoingTask[taskName] != room.memory.taskCount[taskName]){
-					console.log("WARN: "+numDoingTask[taskName]+" workers counted for "+taskName+" task, but "+room+" believes there are "+room.memory.taskCount[taskName]+".")
-					room.memory.taskCount[taskName] = numDoingTask[taskName]
+				if (numDoingTask[taskName] != room.getTaskCount(taskName)){
+					console.log("WARN: "+numDoingTask[taskName]+" workers counted for "+taskName+" task, but "+room+" believes there are "+room.getTaskCount(taskName)+".")
+					room.setTaskCount(taskName, numDoingTask[taskName])
 				}
 			}
+			*/
 			for (let jobName in numDoingJob){
 				if (numDoingJob[jobName] != room.getJobCount(jobName)){
 					console.log("WARN: "+numDoingJob[jobName]+" workers counted for "+jobName+" job, but "+room+" believes there are "+room.getJobCount(jobName)+".")
@@ -228,7 +224,7 @@ function validateRarely(){
 				let createScout = (room == undefined)
 				if (room){
 					let scoutsInRoom = room.find(FIND_MY_CREEPS, {filter: (o) =>
-						   o.getJobType() == "scout"
+						   o.getJob() == "scout"
 						&& o.memory.targetRoom == roomName
 					})
 					if (scoutsInRoom.length == 0) {
@@ -313,14 +309,13 @@ Room.prototype.resetPeople = function(){
             console.log("Person "+personName+" is undefined!")
 			clearDeadPeople()
         } else {
-			if (this.memory.isGrowing && person.getJobType() == "normal") {
+			if (this.memory.isGrowing && person.getJob() == "normal") {
 				person.setJob("grow")
-			}else if (!this.memory.isGrowing && person.getJobType() == "grow"){
+			}else if (!this.memory.isGrowing && person.getJob() == "grow"){
 				person.setJob("normal")
 			}else{
 				person.setJob()
 			}
-			person.setTask()
 		}
     }
 }
