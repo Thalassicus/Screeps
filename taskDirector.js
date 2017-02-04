@@ -31,6 +31,16 @@ Creep.prototype.doTask = function() {
 		this.setTask()
 		return -1
 	}
+	for (let taskInfo of this.memory.priorities){
+		if (this.canInterruptForTask(taskInfo.key)){
+			if (taskInfo.key != "salvage"){
+				console.log(sprintf("DEBUG doTask: %10s interrupts %s for %s in %s.", this.name, this.getTask(), taskInfo.key, this.room))
+			}
+			this.setTask(taskInfo.key)
+			return module.exports.tasks[taskInfo.key].doTask(this)
+		}
+	}
+
 	return module.exports.tasks[task].doTask(this)
 	//this.taskFunction[task](this)
 	
@@ -137,9 +147,24 @@ Creep.prototype.canContinueTask = function(task){
 	return module.exports.tasks[task].canContinue(this)
 }
 
+Creep.prototype.canInterruptForTask = function(task){
+	if (this.getTask() == task) return false
+	if (!module.exports.tasks[this.getTask()].canInterruptThis) return false
+	if (this.room.getTaskCount(task) >= this.room.getTaskMax(task)) return false
+	
+	if (module.exports.tasks[task] == undefined) {
+		console.log("ERROR: module.exports["+task+"] is undefined!")
+		return false
+	}
+	if (module.exports.tasks[task].canInterruptOthers == undefined){
+		console.log("ERROR: canInterruptOthers is undefined for task "+task+"!")
+		return false
+	}
+	return module.exports.tasks[task].canInterruptOthers(this)
+}
+
 Creep.prototype.canStartTask = function(task){
 	if (this.room.getTaskCount(task) >= this.room.getTaskMax(task)) {
-		//console.log("TRACE: "+task+" at max")
 		return false
 	}
 	if (module.exports.tasks[task] == undefined) {
@@ -219,6 +244,9 @@ module.exports.isTargetedFor = function(targetID, task){
 // =================================================================
 
 // Attack
+module.exports.canInterruptOthersToAttack = function(person){
+	return (this.canStart(person))
+}
 module.exports.canStartAttack = function(person) {
 	return this.canContinue(person)
 }
@@ -267,17 +295,21 @@ module.exports.getTargetToAttack = function(person) {
 	
 }
 module.exports.tasks.attackMelee = {
-	type:			"attack",
-	weight:			10,
-	say:			"⚔",
-	useHomeRoom:	false,
-	canStart:		module.exports.canStartAttack,
-	canContinue:	module.exports.canContinueAttack,
-	doTask:			module.exports.doAttack,
-	getTarget:		module.exports.getTargetToAttack,
+	type:				"attack",
+	weight:				10,
+	say:				"⚔",
+	useHomeRoom:		false,
+	canInterruptOthers:	module.exports.canInterruptOthersToAttack,
+	canStart:			module.exports.canStartAttack,
+	canContinue:		module.exports.canContinueAttack,
+	doTask:				module.exports.doAttack,
+	getTarget:			module.exports.getTargetToAttack,
 }
 
-// Attack Ranged
+// AttackRanged
+module.exports.canInterruptOthersToAttackRanged = function(person){
+	return (this.canStart(person))
+}
 module.exports.canStartAttackRanged = function(person) {
 	return this.canContinue(person)
 }
@@ -306,17 +338,21 @@ module.exports.getTargetToAttackRanged = function(person) {
 	return module.exports.getTargetToAttack(person)
 }
 module.exports.tasks.attackRanged = {
-	type:			"attackRanged",
-	weight:			10,
-	say:			"⚔",
-	useHomeRoom:	false,
-	canStart:		module.exports.canStartAttackRanged,
-	canContinue:	module.exports.canContinueAttackRanged,
-	doTask:			module.exports.doAttackRanged,
-	getTarget:		module.exports.getTargetToAttackRanged,
+	type:				"attackRanged",
+	weight:				10,
+	say:				"⚔",
+	useHomeRoom:		false,
+	canInterruptOthers:	module.exports.canInterruptOthersToAttackRanged,
+	canStart:			module.exports.canStartAttackRanged,
+	canContinue:		module.exports.canContinueAttackRanged,
+	doTask:				module.exports.doAttackRanged,
+	getTarget:			module.exports.getTargetToAttackRanged,
 }
 
 // Heal
+module.exports.canInterruptOthersToHeal = function(person){
+	return (this.canStart(person))
+}
 module.exports.canStartHeal = function(person) {
 	return this.canContinue(person)
 }
@@ -346,22 +382,26 @@ module.exports.getTargetToHeal = function(person) {
 	return false
 }
 module.exports.tasks.heal = {
-	type:			"heal",
-	weight:			10,
-	say:			"⚔",
-	useHomeRoom:	false,
-	canStart:		module.exports.canStartHeal,
-	canContinue:	module.exports.canContinueHeal,
-	doTask:			module.exports.doHeal,
-	getTarget:		module.exports.getTargetToHeal,
+	type:				"heal",
+	weight:				10,
+	say:				"⚔",
+	useHomeRoom:		false,
+	canInterruptOthers:	module.exports.canInterruptOthersToHeal,
+	canStart:			module.exports.canStartHeal,
+	canContinue:		module.exports.canContinueHeal,
+	doTask:				module.exports.doHeal,
+	getTarget:			module.exports.getTargetToHeal,
 }
 
 // GuardPost
+module.exports.canInterruptOthersToGuardPost = function(person){
+	return false
+}
 module.exports.canStartGuardPost = function(person) {
 	return Game.flags.Guard1
 }
 module.exports.canContinueGuardPost = function(person) {
-	return false
+	return Game.flags.Guard1
 }
 module.exports.doGuardPost = function(person) {
 	let target = Game.flags.Guard1
@@ -383,14 +423,16 @@ module.exports.getTargetToGuardPost = function(person) {
 
 }
 module.exports.tasks.guardPost = {
-	type:			"guardPost",
-	weight:			10,
-	say:			false,
-	useHomeRoom:	false,
-	canStart:		module.exports.canStartGuardPost,
-	canContinue:	module.exports.canContinueGuardPost,
-	doTask:			module.exports.doGuardPost,
-	getTarget:		module.exports.getTargetToGuardPost,
+	type:				"guardPost",
+	weight:				10,
+	say:				"★",
+	useHomeRoom:		false,
+	canInterruptThis:	true,
+	canInterruptOthers:	module.exports.canInterruptOthersToGuardPost,
+	canStart:			module.exports.canStartGuardPost,
+	canContinue:		module.exports.canContinueGuardPost,
+	doTask:				module.exports.doGuardPost,
+	getTarget:			module.exports.getTargetToGuardPost,
 }
 
 
@@ -403,6 +445,9 @@ module.exports.tasks.guardPost = {
 // =================================================================
 
 // Build
+module.exports.canInterruptOthersToBuild = function(person){
+	return (person.ticksToLive % 10 == 0 && this.canStart(person))
+}
 module.exports.canStartBuild = function(person) {
 	return this.canContinue(person)
 }
@@ -412,7 +457,7 @@ module.exports.canContinueBuild = function(person) {
 	return (person.room.find(FIND_CONSTRUCTION_SITES).length > 0)
 }
 module.exports.doBuild = function(person) {
-	let target = person.pos.findClosestByPath(FIND_CONSTRUCTION_SITES)
+	let target = this.getTarget(person)
 	
 	if (typeof target != "object") return ERR_NOT_FOUND
 	//Memory.targetOf[target.id] = person.getTask()
@@ -424,20 +469,25 @@ module.exports.doBuild = function(person) {
 	return OK
 }
 module.exports.getTargetToBuild = function(person) {
-	
+	return person.pos.findClosestByPath(FIND_CONSTRUCTION_SITES)
 }
 module.exports.tasks.build = {
-	type:			"build",
-	weight:			10,
-	say:			"🔨+",
-	useHomeRoom:	false,
-	canStart:		module.exports.canStartBuild,
-	canContinue:	module.exports.canContinueBuild,
-	doTask:			module.exports.doBuild,
-	getTarget:		module.exports.getTargetToBuild,
+	type:				"build",
+	weight:				10,
+	say:				"🔨",
+	useHomeRoom:		false,
+	canInterruptThis:	true,
+	canInterruptOthers:	module.exports.canInterruptOthersToBuild,
+	canStart:			module.exports.canStartBuild,
+	canContinue:		module.exports.canContinueBuild,
+	doTask:				module.exports.doBuild,
+	getTarget:			module.exports.getTargetToBuild,
 }
 
 // Harvest
+module.exports.canInterruptOthersToHarvest = function(person){
+	return false
+}
 module.exports.canStartHarvest = function(person) {
 	if (person.room.getJobCount("haul") == 0
 			&& person.canStartTask("storeGet")
@@ -457,25 +507,30 @@ module.exports.canStartHarvest = function(person) {
 			return false
 		}
 	}
+	
+	// Should we build from storage?
+	if (person.room.find(FIND_CONSTRUCTION_SITES).length > 0 && person.room.getTaskCount("build") < person.room.getTaskMax("build")){
+		if (person.room.find(FIND_STRUCTURES, {filter: (t) =>
+				   t.structureType == STRUCTURE_STORAGE
+				&& t.store
+				&& t.store[RESOURCE_ENERGY] > 0.25 * t.storeCapacity
+				}).length > 0){
+			//console.log("TRACE: do not harvest (build from storage)")
+			return false
+		}
+	}
 	return this.canContinue(person)
 
 }
 module.exports.canContinueHarvest = function(person) {
 	if (_.sum(person.carry) >= person.carryCapacity) return false
-	if (person.room.name != person.memory.homeRoomName && person.ticksToLive < 120) {
-		console.log("TRACE: "+person.name+" stop harvest in "+person.room+" (retire to home)")
+	if (person.room.name != person.memory.homeRoomName && person.ticksToLive < 90) {
+		//console.log("TRACE: "+person.name+" stop harvest in "+person.room+" (retire to home)")
 		return false
 	}
 	
-	if (person.pos.findClosestByPath(FIND_SOURCES_ACTIVE)){
-	//if (person.room.find(FIND_SOURCES_ACTIVE).length > 0) {
-		return true
-	} else {
-		// Maximum number of harvesters reached
-		// homeRoom.changeMaxTasks(task, -1)
-		//console.log("TRACE: No sources to harvest for "+person.name+" in "+person.room.name+".")
-		return false
-	}
+	return person.pos.findClosestByPath(FIND_SOURCES_ACTIVE)
+	//return person.room.find(FIND_SOURCES_ACTIVE).length > 0
 
 }
 module.exports.doHarvest = function(person) {
@@ -495,18 +550,24 @@ module.exports.getTargetToHarvest = function(person) {
 
 }
 module.exports.tasks.harvest = {
-	type:			"harvest",
-	weight:			10,
-	say:			"⛏",
-	useHomeRoom:	false,
-	canStart:		module.exports.canStartHarvest,
-	canContinue:	module.exports.canContinueHarvest,
-	doTask:			module.exports.doHarvest,
-	getTarget:		module.exports.getTargetToHarvest,
+	type:				"harvest",
+	weight:				10,
+	say:				"⛏",
+	useHomeRoom:		false,
+	canInterruptThis:	false,
+	canInterruptOthers:	module.exports.canInterruptOthersToHarvest,
+	canStart:			module.exports.canStartHarvest,
+	canContinue:		module.exports.canContinueHarvest,
+	doTask:				module.exports.doHarvest,
+	getTarget:			module.exports.getTargetToHarvest,
 }
 
 // HarvestFar
+module.exports.canInterruptOthersToHarvestFar = function(person){
+	return false
+}
 module.exports.canStartHarvestFar = function(person) {
+	// Should we energize from storage?
 	if (person.room.getJobCount("haul") == 0
 			&& person.canStartTask("storeGet")
 			&& person.room.getTaskCount("energize") < person.room.getTaskMax("energize")){
@@ -522,6 +583,17 @@ module.exports.canStartHarvestFar = function(person) {
 					&& t.energy < 0.55 * t.energyCapacity
 				}).length > 0){
 			//console.log("TRACE: do not harvestFar (energize tower)")
+			return false
+		}
+	}
+	
+	// Should we build from storage?
+	if (person.room.find(FIND_CONSTRUCTION_SITES).length > 0 && person.room.getTaskCount("build") < person.room.getTaskMax("build")){
+		if (person.room.find(FIND_STRUCTURES, {filter: (t) =>
+				   t.structureType == STRUCTURE_STORAGE
+				&& t.store
+				&& t.store[RESOURCE_ENERGY] > 0.25 * t.storeCapacity
+				}).length > 0){
 			return false
 		}
 	}
@@ -554,7 +626,7 @@ module.exports.canContinueHarvestFar = function(person) {
 		//console.log("TRACE: "+person.name+" stop harvestFar in "+person.room+" (at capacity)")
 		return false
 	}
-	if (person.ticksToLive < 120) {
+	if (person.ticksToLive < 90) {
 		//console.log("TRACE: "+person.name+" stop harvestFar in "+person.room+" (retire to home)")
 		return false
 	}
@@ -608,17 +680,22 @@ module.exports.isTargetToHarvestFar = function(targetID) {
 	return (typeof target == "object") && target.energy
 }
 module.exports.tasks.harvestFar = {
-	type:			"harvestFar",
-	weight:			10,
-	say:			"⛏...",
-	useHomeRoom:	true,
-	canStart:		module.exports.canStartHarvestFar,
-	canContinue:	module.exports.canContinueHarvestFar,
-	doTask:			module.exports.doHarvestFar,
-	getTarget:		module.exports.getTargetToHarvestFar,
+	type:				"harvestFar",
+	weight:				10,
+	say:				"⛏...",
+	useHomeRoom:		true,
+	canInterruptThis:	false,
+	canInterruptOthers:	module.exports.canInterruptOthersToHarvestFar,
+	canStart:			module.exports.canStartHarvestFar,
+	canContinue:		module.exports.canContinueHarvestFar,
+	doTask:				module.exports.doHarvestFar,
+	getTarget:			module.exports.getTargetToHarvestFar,
 }
 
 // Repair
+module.exports.canInterruptOthersToRepair = function(person){
+	return (person.ticksToLive % 10 == 0 && this.canStart(person))
+}
 module.exports.canStartRepair = function(person) {
 	if (person.room.find(FIND_MY_STRUCTURES, {filter: {structureType: STRUCTURE_TOWER}}).length > 0){
 		if (!person.room.memory.isGrowing) return false // towers available
@@ -637,7 +714,7 @@ module.exports.doRepair = function(person) {
 	let target = this.getTarget(person)
 	
 	if (!target || typeof target != "object") {
-		console.log("ERROR doRepair: "+person.name+" target is "+target)
+		console.log("ERROR doRepair: "+person.name+" target is "+target+" in "+person.room)
 		return ERR_NOT_FOUND
 	}
 	//Memory.targetOf[target.id] = person.getTask()
@@ -657,17 +734,22 @@ module.exports.getTargetToRepair = function(person) {
 	})
 }
 module.exports.tasks.repair = {
-	type:			"repair",
-	weight:			10,
-	say:			"🔨",
-	useHomeRoom:	false,
-	canStart:		module.exports.canStartRepair,
-	canContinue:	module.exports.canContinueRepair,
-	doTask:			module.exports.doRepair,
-	getTarget:		module.exports.getTargetToRepair,
+	type:				"repair",
+	weight:				10,
+	say:				"🔨+",
+	useHomeRoom:		false,
+	canInterruptThis:	true,
+	canInterruptOthers:	module.exports.canInterruptOthersToRepair,
+	canStart:			module.exports.canStartRepair,
+	canContinue:		module.exports.canContinueRepair,
+	doTask:				module.exports.doRepair,
+	getTarget:			module.exports.getTargetToRepair,
 }
 
 // RepairCritical
+module.exports.canInterruptOthersToRepairCritical = function(person){
+	return (person.ticksToLive % 10 == 0 && this.canStart(person))
+}
 module.exports.canStartRepairCritical = function(person) {
 	return this.canContinue(person)
 }
@@ -699,17 +781,22 @@ module.exports.getTargetToRepairCritical = function(person) {
 
 }
 module.exports.tasks.repairCritical = {
-	type:			"repairCritical",
-	weight:			10,
-	say:			"🔨!",
-	useHomeRoom:	false,
-	canStart:		module.exports.canStartRepairCritical,
-	canContinue:	module.exports.canContinueRepairCritical,
-	doTask:			module.exports.doRepairCritical,
-	getTarget:		module.exports.getTargetToRepairCritical,
+	type:				"repairCritical",
+	weight:				10,
+	say:				"🔨!",
+	useHomeRoom:		false,
+	canInterruptThis:	true,
+	canInterruptOthers:	module.exports.canInterruptOthersToRepairCritical,
+	canStart:			module.exports.canStartRepairCritical,
+	canContinue:		module.exports.canContinueRepairCritical,
+	doTask:				module.exports.doRepairCritical,
+	getTarget:			module.exports.getTargetToRepairCritical,
 }
 
 // Upgrade
+module.exports.canInterruptOthersToUpgrade = function(person){
+	return (person.ticksToLive % 10 == 0 && this.canStart(person))
+}
 module.exports.canStartUpgrade = function(person) {
 	return this.canContinue(person)
 
@@ -733,17 +820,22 @@ module.exports.getTargetToUpgrade = function(person) {
 
 }
 module.exports.tasks.upgrade = {
-	type:			"upgrade",
-	weight:			10,
-	say:			"◐",
-	useHomeRoom:	false,
-	canStart:		module.exports.canStartUpgrade,
-	canContinue:	module.exports.canContinueUpgrade,
-	doTask:			module.exports.doUpgrade,
-	getTarget:		module.exports.getTargetToUpgrade,
+	type:				"upgrade",
+	weight:				10,
+	say:				"◐",
+	useHomeRoom:		false,
+	canInterruptThis:	false,
+	canInterruptOthers:	module.exports.canInterruptOthersToUpgrade,
+	canStart:			module.exports.canStartUpgrade,
+	canContinue:		module.exports.canContinueUpgrade,
+	doTask:				module.exports.doUpgrade,
+	getTarget:			module.exports.getTargetToUpgrade,
 }
 
 // UpgradeFallback
+module.exports.canInterruptOthersToUpgradeFallback = function(person){
+	
+}
 module.exports.canStartUpgradeFallback = function(person) {
 	return this.canContinue(person)
 }
@@ -757,17 +849,22 @@ module.exports.getTargetToUpgradeFallback = function(person) {
 
 }
 module.exports.tasks.upgradeFallback = {
-	type:			"upgradeFallback",
-	weight:			10,
-	say:			"◐?",
-	useHomeRoom:	false,
-	canStart:		module.exports.canStartUpgradeFallback,
-	canContinue:	module.exports.canContinueUpgradeFallback,
-	doTask:			module.exports.doUpgradeFallback,
-	getTarget:		module.exports.getTargetToUpgradeFallback,
+	type:				"upgradeFallback",
+	weight:				10,
+	say:				"◐?",
+	useHomeRoom:		false,
+	canInterruptThis:	true,
+	canInterruptOthers:	module.exports.canInterruptOthersToUpgradeFallback,
+	canStart:			module.exports.canStartUpgradeFallback,
+	canContinue:		module.exports.canContinueUpgradeFallback,
+	doTask:				module.exports.doUpgradeFallback,
+	getTarget:			module.exports.getTargetToUpgradeFallback,
 }
 
 // Wall
+module.exports.canInterruptOthersToWall = function(person){
+	return (person.ticksToLive % 10 == 0 && this.canStart(person))
+}
 module.exports.canStartWall = function(person) {
 	if (person.room.find(FIND_MY_STRUCTURES, {filter: {structureType: STRUCTURE_TOWER}}).length > 0){
 		if (!person.room.memory.isGrowing) return false // towers available
@@ -801,14 +898,16 @@ module.exports.getTargetToWall = function(person) {
 
 }
 module.exports.tasks.wall = {
-	type:			"wall",
-	weight:			10,
-	say:			"♜",
-	useHomeRoom:	false,
-	canStart:		module.exports.canStartWall,
-	canContinue:	module.exports.canContinueWall,
-	doTask:			module.exports.doWall,
-	getTarget:		module.exports.getTargetToWall,
+	type:				"wall",
+	weight:				10,
+	say:				"♜",
+	useHomeRoom:		false,
+	canInterruptThis:	true,
+	canInterruptOthers:	module.exports.canInterruptOthersToWall,
+	canStart:			module.exports.canStartWall,
+	canContinue:		module.exports.canContinueWall,
+	doTask:				module.exports.doWall,
+	getTarget:			module.exports.getTargetToWall,
 }
 
 
@@ -821,6 +920,9 @@ module.exports.tasks.wall = {
 // =================================================================
 
 // Energize
+module.exports.canInterruptOthersToEnergize = function(person){
+	return (person.ticksToLive % 10 == 0 && this.canStart(person))
+}
 module.exports.canStartEnergize = function(person) {
 	//if (person.room.name != person.memory.homeRoomName) return false
 	if (person.room.memory.numHostiles == 0 && person.getJob() != "haul" && person.room.getJobCount("haul") > 0) return false
@@ -897,8 +999,8 @@ module.exports.getTargetToEnergize = function(person) {
 	// finish towers
 	if (!target) target = person.pos.findClosestByPath(FIND_STRUCTURES, { filter: (t) =>
 		   (t.structureType == STRUCTURE_TOWER)
-		&& t.energy < t.energyCapacity
-		&& !_.includes(Memory.targetOf[t.id], this.type)
+		&& t.energy < t.energyCapacity - Math.min(50, 0.5*person.carry.energy)
+		//&& !_.includes(Memory.targetOf[t.id], this.type)
 	})
 	
 	module.exports.setTarget(person.name, target && target.id)
@@ -910,29 +1012,34 @@ module.exports.isValidTargetToEnergize = function(target){
 	return true
 }
 module.exports.tasks.energize = {
-	type:			"energize",
-	weight:			10,
-	say:			"⚡",
-	useHomeRoom:	false,
-	canStart:		module.exports.canStartEnergize,
-	canContinue:	module.exports.canContinueEnergize,
-	doTask:			module.exports.doEnergize,
-	getTarget:		module.exports.getTargetToEnergize,
-	isValidTarget:	module.exports.isValidTargetToEnergize,
+	type:				"energize",
+	weight:				10,
+	say:				"⚡",
+	useHomeRoom:		false,
+	canInterruptThis:	true,
+	canInterruptOthers:	module.exports.canInterruptOthersToEnergize,
+	canStart:			module.exports.canStartEnergize,
+	canContinue:		module.exports.canContinueEnergize,
+	doTask:				module.exports.doEnergize,
+	getTarget:			module.exports.getTargetToEnergize,
+	isValidTarget:		module.exports.isValidTargetToEnergize,
 }
 
 // Salvage
+module.exports.canInterruptOthersToSalvage = function(person){
+	return (person.ticksToLive % 5 == 0 && this.canStart(person))
+}
 module.exports.canStartSalvage = function(person) {
 	return this.canContinue(person)
 }
 module.exports.canContinueSalvage = function(person) {
-	let homeRoom = Game.rooms[person.memory.homeRoomName]
+	if (person.room.name != person.memory.homeRoomName && person.room.memory.numHostiles > 0) return false
 	if (_.sum(person.carry) >= person.carryCapacity) return false
 	return (person.room.find(FIND_DROPPED_RESOURCES).length > 0)
 
 }
 module.exports.doSalvage = function(person) {
-	let target = person.pos.findClosestByPath(FIND_DROPPED_RESOURCES)
+	let target = this.getTarget(person)
 	
 	if (typeof target != "object") return ERR_NOT_FOUND
 	
@@ -943,20 +1050,28 @@ module.exports.doSalvage = function(person) {
 	return result
 }
 module.exports.getTargetToSalvage = function(person) {
-
+	let target = person.pos.findClosestByPath(FIND_DROPPED_RESOURCES, {filter: (t) => t.resourceType != RESOURCE_ENERGY})
+	if (target) return target
+	
+	return person.pos.findClosestByPath(FIND_DROPPED_RESOURCES)
 }
 module.exports.tasks.salvage = {
-	type:			"salvage",
-	weight:			10,
-	say:			"⛢",
-	useHomeRoom:	false,
-	canStart:		module.exports.canStartSalvage,
-	canContinue:	module.exports.canContinueSalvage,
-	doTask:			module.exports.doSalvage,
-	getTarget:		module.exports.getTargetToSalvage,
+	type:				"salvage",
+	weight:				10,
+	say:				"⛢",
+	useHomeRoom:		false,
+	canInterruptThis:	false,
+	canInterruptOthers:	module.exports.canInterruptOthersToSalvage,
+	canStart:			module.exports.canStartSalvage,
+	canContinue:		module.exports.canContinueSalvage,
+	doTask:				module.exports.doSalvage,
+	getTarget:			module.exports.getTargetToSalvage,
 }
 
 // StoreAdd
+module.exports.canInterruptOthersToStoreAdd = function(person){
+	return false
+}
 module.exports.canStartStoreAdd = function(person) {
 	if (person.getTask() == "storeGet") return false // don't immediately storeGet a withdrawl
 	if (person.getJob() == "haul" && !person.canStartTask("energize")) return false
@@ -1083,16 +1198,20 @@ module.exports.getTargetToStoreAdd = function(person) {
 	}
 }
 module.exports.tasks.storeAdd = {
-	type:			"storeAdd", 
-	weight:			10, 
-	say:			"▼", 
-	canStart:		module.exports.canStartStoreAdd, 
-	canContinue:	module.exports.canContinueStoreAdd, 
-	doTask:			module.exports.doStoreAdd, 
-	getTarget:		module.exports.getTargetToStoreAdd
+	type:				"storeAdd", 
+	weight:				10, 
+	say:				"▼", 
+	canInterruptOthers:	module.exports.canInterruptOthersToStoreAdd,
+	canStart:			module.exports.canStartStoreAdd, 
+	canContinue:		module.exports.canContinueStoreAdd, 
+	doTask:				module.exports.doStoreAdd, 
+	getTarget:			module.exports.getTargetToStoreAdd
 }
 
 // StoreGet
+module.exports.canInterruptOthersToStoreGet = function(person){
+	return false
+}
 module.exports.canStartStoreGet = function(person) {
 	//console.log(person.room.isGrowing +" "+ person.canStartTask("repairCritical") + " " + person.canStartTask("build"))
 	if (person.room.memory.isGrowing){
@@ -1162,14 +1281,15 @@ module.exports.getTargetToStoreGet = function(person) {
 	return person.pos.findClosestByPath(possibleTargets)
 }
 module.exports.tasks.storeGet = {
-	type:			"storeGet",
-	weight:			10,
-	say:			"△",
-	useHomeRoom:	false,
-	canStart:		module.exports.canStartStoreGet,
+	type:				"storeGet",
+	weight:				10,
+	say:				"△",
+	useHomeRoom:		false,
+	canInterruptOthers:	module.exports.canInterruptOthersToStoreGet,
+	canStart:			module.exports.canStartStoreGet,
 	canContinue: 	module.exports.canContinueStoreGet,
-	doTask:			module.exports.doStoreGet,
-	getTarget:		module.exports.getTargetToStoreGet,
+	doTask:				module.exports.doStoreGet,
+	getTarget:			module.exports.getTargetToStoreGet,
 }
 
 
@@ -1182,6 +1302,9 @@ module.exports.tasks.storeGet = {
 // =================================================================
 
 // GoHome
+module.exports.canInterruptOthersToGoHome = function(person){
+	return false
+}
 module.exports.canStartGoHome = function(person) {
 	return this.canContinue(person)
 }
@@ -1203,20 +1326,23 @@ module.exports.getTargetToGoHome = function(person) {
 
 }
 module.exports.tasks.goHome = {
-	type:			"goHome",
-	weight:			10,
-	say:			"🏠",
-	useHomeRoom:	true,
-	canStart:		module.exports.canStartGoHome,
-	canContinue:	module.exports.canContinueGoHome,
-	doTask:			module.exports.doGoHome,
-	getTarget:		module.exports.getTargetToGoHome,
+	type:				"goHome",
+	weight:				10,
+	say:				"🏠",
+	useHomeRoom:		true,
+	canInterruptOthers:	module.exports.canInterruptOthersToGoHome,
+	canStart:			module.exports.canStartGoHome,
+	canContinue:		module.exports.canContinueGoHome,
+	doTask:				module.exports.doGoHome,
+	getTarget:			module.exports.getTargetToGoHome,
 }
 
 // Idle
+module.exports.canInterruptOthersToIdle = function(person){
+	return false
+}
 module.exports.canStartIdle = function(person) {
 	return true
-
 }
 module.exports.canContinueIdle = function(person) {
 	return false
@@ -1252,17 +1378,22 @@ module.exports.getTargetToIdle = function(person) {
 
 }
 module.exports.tasks.idle = {
-	type:			"idle",
-	weight:			10,
-	say:			"?",
-	useHomeRoom:	false,
-	canStart:		module.exports.canStartIdle,
-	canContinue:	module.exports.canContinueIdle,
-	doTask:			module.exports.doIdle,
-	getTarget:		module.exports.getTargetToIdle,
+	type:				"idle",
+	weight:				10,
+	say:				"?",
+	useHomeRoom:		false,
+	canInterruptThis:	true,
+	canInterruptOthers:	module.exports.canInterruptOthersToIdle,
+	canStart:			module.exports.canStartIdle,
+	canContinue:		module.exports.canContinueIdle,
+	doTask:				module.exports.doIdle,
+	getTarget:			module.exports.getTargetToIdle,
 }
 
 // Recycle
+module.exports.canInterruptOthersToRecycle = function(person){
+	return false
+}
 module.exports.canStartRecycle = function(person) {
 	return this.canContinue(person)
 
@@ -1288,17 +1419,21 @@ module.exports.getTargetToRecycle = function(person) {
 
 }
 module.exports.tasks.recycle = {
-	type:			"recycle",
-	weight:			10,
-	say:			"☠",
-	useHomeRoom:	true,
-	canStart:		module.exports.canStartRecycle,
-	canContinue:	module.exports.canContinueRecycle,
-	doTask:			module.exports.doRecycle,
-	getTarget:		module.exports.getTargetToRecycle,
+	type:				"recycle",
+	weight:				10,
+	say:				"☠",
+	useHomeRoom:		true,
+	canInterruptOthers:	module.exports.canInterruptOthersToRecycle,
+	canStart:			module.exports.canStartRecycle,
+	canContinue:		module.exports.canContinueRecycle,
+	doTask:				module.exports.doRecycle,
+	getTarget:			module.exports.getTargetToRecycle,
 }
 
 // Reserve
+module.exports.canInterruptOthersToReserve = function(person){
+	return true
+}
 module.exports.canStartReserve = function(person) {
 	return true
 }
@@ -1367,24 +1502,27 @@ module.exports.isValidTargetToReserve = function(target){
 	return true
 }
 module.exports.tasks.reserve = {
-	type:			"reserve",
-	weight:			10,
-	say:			false,
-	useHomeRoom:	true,
-	canStart:		module.exports.canStartReserve,
-	canContinue:	module.exports.canContinueReserve,
-	doTask:			module.exports.doReserve,
-	getTarget:		module.exports.getTargetToReserve,
-	isValidTarget:	module.exports.isValidTargetToReserve,
+	type:				"reserve",
+	weight:				10,
+	say:				false,
+	useHomeRoom:		true,
+	canInterruptOthers:	module.exports.canInterruptOthersToReserve,
+	canStart:			module.exports.canStartReserve,
+	canContinue:		module.exports.canContinueReserve,
+	doTask:				module.exports.doReserve,
+	getTarget:			module.exports.getTargetToReserve,
+	isValidTarget:		module.exports.isValidTargetToReserve,
 }
 
 // Scout
+module.exports.canInterruptOthersToScout = function(person){
+	return true
+}
 module.exports.canStartScout = function(person) {
 	return true
-
 }
 module.exports.canContinueScout = function(person) {
-	return false
+	return true
 }
 module.exports.doScout = function(person) {
 	let roomName = person.memory.targetRoom
@@ -1413,14 +1551,15 @@ module.exports.getTargetToScout = function(person) {
 
 }
 module.exports.tasks.scout = {
-	type:			"scout",
-	weight:			10,
-	say:			false,
-	useHomeRoom:	true,
-	canStart:		module.exports.canStartScout,
-	canContinue:	module.exports.canContinueScout,
-	doTask:			module.exports.doScout,
-	getTarget:		module.exports.getTargetToScout,
+	type:				"scout",
+	weight:				10,
+	say:				false,
+	useHomeRoom:		true,
+	canInterruptOthers:	module.exports.canInterruptOthersToScout,
+	canStart:			module.exports.canStartScout,
+	canContinue:		module.exports.canContinueScout,
+	doTask:				module.exports.doScout,
+	getTarget:			module.exports.getTargetToScout,
 }
 
 

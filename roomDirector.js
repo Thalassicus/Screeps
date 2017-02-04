@@ -1,10 +1,11 @@
 let _ = require("lodash")
 var jobDirector = require("jobDirector")
 var taskDirector = require("taskDirector")
+//let log = require("logger")
 
 //console.log("TRACE doSpawns: taskDirector.tasks.reserve.getTarget() = "+taskDirector.tasks.reserve.getTarget())
 
-Memory.retirementAge = 120
+Memory.retirementAge = 30
 let harvestRate = 2
 let carryCapacity = 50
 let sourceRespawnTime = 300
@@ -79,10 +80,10 @@ Room.prototype.doSpawns = function(){
 				for (let sourceID in Memory.sources) {
 					let source = Game.getObjectById(sourceID)
 					if (source) {
-						maxWorkers += source.energyCapacity / 1000
+						maxWorkers += source.energyCapacity / Math.max(1000, this.energyCapacityAvailable)
 					}
 				}
-				room.memory.maxWorkers = maxWorkers
+				room.memory.maxWorkers = Math.round(maxWorkers)
 			}
 		}else{
 			room.memory.maxWorkers = 0
@@ -135,18 +136,20 @@ Room.prototype.doSpawns = function(){
 		let roomHasStorage = this.find(FIND_STRUCTURES, {filter: (t) => 
 				   t.structureType == STRUCTURE_CONTAINER || t.structureType == STRUCTURE_STORAGE
 				}).length > 0
-		if (roomHasStorage && numDoingJob["haul"] < Math.floor(this.energyCapacityAvailable / 1000)){
+		//console.log(sprintf("DEBUG: roomHasStorage=%s numDoingJob.haul=%s this.energyCapacityAvailable=%s", roomHasStorage, numDoingJob["haul"], this.energyCapacityAvailable))
+		if (roomHasStorage && numDoingJob["haul"] < Math.floor(this.energyCapacityAvailable / 900)){
 			return this.createPerson("haul")
 		}
 		
 		// Assign guards
-		if (numDoingJob["attackMelee"] < this.getJobMax("attackMelee")){
+		let maxGuards = this.energyCapacityAvailable < 1800 && 2 || 1
+		if (numDoingJob["attackMelee"] < maxGuards){
 			return this.createPerson("attackMelee")
 		}
-		if (numDoingJob["attackRanged"] < this.getJobMax("attackRanged")){
+		if (numDoingJob["attackRanged"] < maxGuards){
 			return this.createPerson("attackRanged")
 		}
-		if (numDoingJob["heal"] < this.getJobMax("heal")){
+		if (numDoingJob["heal"] < maxGuards){
 			return this.createPerson("heal")
 		}
 	}
@@ -199,16 +202,6 @@ Room.prototype.getWorstWorkerCost = function(){
 	}
 	
 	return [worstWorker.name, cheapestCost]
-}
-
-Creep.prototype.getBodyCost = function(){
-	if (this.memory.bodyCost) return this.memory.bodyCost
-	let cost = 0
-	for (i=0; i<this.body.length; i++){
-		cost += BODYPART_COST[this.body[i].type]
-	}
-	this.memory.bodyCost = cost
-	return cost
 }
 
 Room.prototype.getBodyParts = function(job){
@@ -327,6 +320,16 @@ Room.prototype.getBodyParts = function(job){
 	return [personParts, personCost]
 }
 
+Creep.prototype.getBodyCost = function(){
+	if (this.memory.bodyCost) return this.memory.bodyCost
+	let cost = 0
+	for (i=0; i<this.body.length; i++){
+		cost += BODYPART_COST[this.body[i].type]
+	}
+	this.memory.bodyCost = cost
+	return cost
+}
+
 Room.prototype.doTasks = function(){	
     for (i=0; i<this.memory.people.length; i++ ) {
         let person = Game.creeps[this.memory.people[i]]
@@ -336,8 +339,7 @@ Room.prototype.doTasks = function(){
 			person.setJob()
 		}
 		
-		
-		if (person.ticksToLive < Memory.retirementAge && !_.includes(["recycle","reserve","scout"], person.getJob())){
+		if (person.ticksToLive < Memory.retirementAge && _.includes(["normal","grow","haul"], person.getJob())){
 			person.setJob("recycle", true)
 			continue
 		}
@@ -381,8 +383,9 @@ Room.prototype.doLinks = function(){
 	for (i=0; i<links.length; i++ ){
 		let link = links[i]
 		if (link != linkDestination && link.energy > 0){
-			//console.log("DEBUG: transfer "+link.energy+" energy from "+link+" to "+linkDestination+".")
-			link.transferEnergy(linkDestination, link.energy)
+			let energy = Math.min(link.energy, linkDestination.energyCapacity - linkDestination.energy)
+			//console.log("DEBUG: transfer "+energy+" energy from "+link+" to "+linkDestination+".")
+			link.transferEnergy(linkDestination, energy)
 		}
 	}
 }
@@ -486,8 +489,10 @@ Room.prototype.repairWithTowers = function() {
 Room.prototype.countHarvestSpots = function(){
 	let sources = this.find(FIND_SOURCES)
 	let harvestSpots = 0
-	if (sources.length > 1) {
+	if (_.includes(["W7N4"], this.name)){//sources.length > 1) { // HARDCODE reserved rooms
 		this.memory.reserve = true
+	}else if (this.memory.reserve){
+		delete this.memory.reserve
 	}
 	for (i=0; i<sources.length; i++){
 		let source = sources[i]
@@ -537,6 +542,8 @@ Room.prototype.getWallMax = function() {
 }
 	
 Room.prototype.setWallMax = function(max) {
+	if (!room.controller.my) this.memory.wallMax = 0
+	
 	let maxByLevel = 500 * Math.pow(3, this.controller.level - 1)
 	if (!max) max = maxByLevel
 	this.memory.wallMax = Math.max(maxByLevel, max)

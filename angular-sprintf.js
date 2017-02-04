@@ -1,4 +1,5 @@
 /* globals angular, sprintf, vsprintf */
+// https://github.com/alexei/sprintf.js
 
 (function () {
     'use strict'
