@@ -3,6 +3,7 @@ var roomDirector = require("roomDirector")
 var taskDirector = require("taskDirector")
 var employers = require("employers")
 var log = require("logger")
+log.setLevel(levelType.LEVEL_DEBUG)
 require("sprintf")
 
 var _ = require("lodash")
@@ -13,7 +14,7 @@ Memory.sources = Memory.sources || {}
 Memory.guards = Memory.guards || {}
 Memory.hostiles = Memory.hostiles || []
 
-Memory.history = Memory.history || {}
+Memory.hour = Memory.hour || new Date().getHours()
 Memory.log = Memory.log || ""
 
 let stopAllScripts = false
@@ -22,7 +23,7 @@ let stopAllScripts = false
 let validateDelay = 10
 let energyCheckDelay = 10
 let assetCheckDelay = 60
-let historyDelay = 60*60
+let historyDelay = 10
 
 module.exports.loop = function () {
 	if (stopAllScripts) return
@@ -47,7 +48,7 @@ module.exports.loop = function () {
 	}
 	
 	if (Game.time % energyCheckDelay == 0){
-		rememberAvailableEnergy()
+		rememberSourceData()
 	}
 	
 	if (Game.time % assetCheckDelay == 0){
@@ -55,7 +56,11 @@ module.exports.loop = function () {
 	}
 	
 	if (Game.time % historyDelay == 0){
-		rememberHistory()
+		let hour = new Date().getHours()
+		if (hour != Memory.hour){
+			Memory.hour = hour
+			printStatistics()
+		}		
 	}
 	
 	for (let personName in Game.creeps) {
@@ -75,7 +80,7 @@ module.exports.loop = function () {
 		let personID = Memory.hostiles[i]
 		let person = Game.getObjectById(personID)
 		if (!person){
-			console.log("DEBUG: No longer tracking hostile "+personID+".")
+			log.info("Defeated hostile %s.", personID)
 			_.pull(Memory.hostiles, personID)
 		}
 	}
@@ -110,6 +115,12 @@ module.exports.loop = function () {
 		} else {
 			room.repairWithTowers()
 		}
+		
+		//if (Game.time % 1 == 0) log.debug("Controller progress remaining = %s", room.controller.progressTotal - room.controller.progress)
+		if (room.memory.level != room.controller.level){
+			room.memory.level = room.controller.level
+			log.info("%s upgraded to level %s.", room, room.controller.level)
+		}
 	}
 	//*/
 }
@@ -121,54 +132,7 @@ module.exports.loop = function () {
 function validateRarely(){
 	for (let roomName in Game.rooms) {
 		let room = Game.rooms[roomName]
-		if (!room) continue
-		
-		if (room.controller.my){
-			room.findRepairTower()
-			room.setWallMax()
-		}
-		
-		if (!room.memory.taskCount) room.resetAll()
-			
-		if (!room.memory.taskCount) console.log("ERROR: "+room+" has no taskCount array!")
-		
-		
-		if (room.memory.people){
-			// validate task list
-			let numDoingTask = {}
-			let numDoingJob = {}
-			/*
-			for (let taskName in taskDirector.tasks){
-				numDoingTask[taskName] = 0
-			}
-			*/
-			for (let jobName in Memory.defaultJobPriorities){
-				numDoingJob[jobName] = 0
-			}
-			for (i=0; i<room.memory.people.length; i++){
-				let person = Game.creeps[room.memory.people[i]]
-				if (person) {
-					//numDoingTask[person.getTask()] += 1
-					numDoingJob[person.getJob()] += 1
-				}
-			}
-			/*
-			for (let taskName in numDoingTask){
-				if (numDoingTask[taskName] != room.getTaskCount(taskName)){
-					console.log("WARN: "+numDoingTask[taskName]+" workers counted for "+taskName+" task, but "+room+" believes there are "+room.getTaskCount(taskName)+".")
-					room.setTaskCount(taskName, numDoingTask[taskName])
-				}
-			}
-			*/
-			for (let jobName in numDoingJob){
-				if (numDoingJob[jobName] != room.getJobCount(jobName)){
-					//console.log("WARN: "+numDoingJob[jobName]+" workers counted for "+jobName+" job, but "+room+" believes there are "+room.getJobCount(jobName)+".")
-					room.setJobCount(jobName, numDoingJob[jobName])
-				}
-			}
-			
-			
-		}
+		if (room) room.validate()
 	}
 	
 	// remove scout flags
@@ -231,6 +195,97 @@ function validateRarely(){
 	}
 }
 
+Room.prototype.validate = function(){
+	let room = this
+	
+	if (room.controller.my){
+		room.findRepairTower()
+		room.setWallMax()
+		room.updateJobs()
+	}
+	
+	if (!room.memory.taskCount) room.resetAll()
+		
+	if (!room.memory.taskCount) console.log("ERROR: "+room+" has no taskCount array!")
+	
+	
+	if (room.memory.people){
+		// validate task list
+		let numDoingTask = {}
+		let numDoingJob = {}
+		/*
+		for (let taskName in taskDirector.tasks){
+			numDoingTask[taskName] = 0
+		}
+		*/
+		for (let jobName in Memory.defaultJobPriorities){
+			numDoingJob[jobName] = 0
+		}
+		for (i=0; i<room.memory.people.length; i++){
+			let person = Game.creeps[room.memory.people[i]]
+			if (person) {
+				//numDoingTask[person.getTask()] += 1
+				numDoingJob[person.getJob()] += 1
+			}
+		}
+		/*
+		for (let taskName in numDoingTask){
+			if (numDoingTask[taskName] != room.getTaskCount(taskName)){
+				console.log("WARN: "+numDoingTask[taskName]+" workers counted for "+taskName+" task, but "+room+" believes there are "+room.getTaskCount(taskName)+".")
+				room.setTaskCount(taskName, numDoingTask[taskName])
+			}
+		}
+		*/
+		for (let jobName in numDoingJob){
+			if (numDoingJob[jobName] != room.getJobCount(jobName)){
+				//console.log("WARN: "+numDoingJob[jobName]+" workers counted for "+jobName+" job, but "+room+" believes there are "+room.getJobCount(jobName)+".")
+				room.setJobCount(jobName, numDoingJob[jobName])
+			}
+		}
+	}
+}
+
+Room.prototype.updateJobs = function(){
+	let room = this
+	room.setJobMax("haul", Math.floor(room.energyCapacityAvailable / 900))
+	
+	let [energy, energyCapacity] = room.getEnergy()
+	
+	if (energyCapacity > 0){
+		//*
+		log.trace("max upgraders=%s, numWorkers=%s energy=%s/%s",
+			Math.max(1, Math.round(0.8 * room.countNumWorkers() * energy / 1000000)),
+			room.countNumWorkers(),
+			energy,
+			energyCapacity
+		)
+		//*/
+		
+		log.trace("%s upgrade jobs = %s", room, Math.round(2 * energy/energyCapacity))
+		room.setJobMax("upgrade", Math.round(2 * energy/energyCapacity))
+		log.trace("%s upgrade jobs = %s", room, room.getJobMax("upgrade"))
+		room.setTaskMax("upgrade", Math.max(1, Math.min(room.countNumWorkers(), Math.round(0.8 * room.countNumWorkers() * energy/energyCapacity))))
+	}
+	
+	let maxGuards = room.energyCapacityAvailable < 1800 && 2 || 1
+	room.setJobMax("attackMelee", maxGuards)
+	room.setJobMax("attackRanged", maxGuards)
+	room.setJobMax("heal", maxGuards)
+}
+
+Room.prototype.getEnergy = function(){
+	let room = this
+	let energy = 0
+	let energyCapacity = 0
+	let storage = room.find(FIND_STRUCTURES, {filter: (t) => t.structureType == STRUCTURE_CONTAINER || t.structureType == STRUCTURE_STORAGE})
+	for (i=0; i<storage.length; i++){
+		//log.debug("%s energy=%s energyCapacity=%s", storage[i], storage[i].store[RESOURCE_ENERGY], storage[i].storeCapacity)
+		energy += storage[i].store[RESOURCE_ENERGY]
+		energyCapacity += storage[i].storeCapacity
+	}
+	return [energy, energyCapacity]
+}
+
 Creep.prototype.validate = function() {
 	if (typeof Game.rooms[this.memory.homeRoomName] != "object") {
 		this.memory.homeRoomName = this.room.name
@@ -260,8 +315,8 @@ resetAll = function(){
 }
 
 Room.prototype.resetAll = function(){
-	this.setTaskLimits()
 	this.setJobLimits()
+	this.setTaskLimits()
 	if (this.controller.my){
 		this.setWallMax()
 		this.resetPeople()
@@ -295,34 +350,41 @@ Room.prototype.resetPeople = function(){
 // Statistics
 //
 
+printStatistics = function(){
+	log.info("Total Assets = %s", getTotalAssets())
+	printAssetStatistics(60)
+	let energyStatistics = getEnergyStatistics()
+	log.info("Energy over %.2d minutes - average=%s min=%s max=%s",
+		energyStatistics.minutes,
+		energyStatistics.average,
+		energyStatistics.minimum,
+		energyStatistics.maximum
+	)
+}
+
 getEnergyStatistics = function(){
-	if (!Memory.energyAvailableToHarvest) {
-		rememberAvailableEnergy()
+	if (!Memory.sourceEnergyAvailable) {
+		rememberSourceData()
 	}
 	
 	let sum = 0
 	let minEnergy = 99999999
 	let maxEnergy = -1
-	for (i=0; i<Memory.energyAvailableToHarvest.length; i++){
-		sum += Memory.energyAvailableToHarvest[i]
-		if (Memory.energyAvailableToHarvest[i] > maxEnergy) maxEnergy = Memory.energyAvailableToHarvest[i]
-		if (Memory.energyAvailableToHarvest[i] < minEnergy) minEnergy = Memory.energyAvailableToHarvest[i]
+	for (i=0; i<Memory.sourceEnergyAvailable.length; i++){
+		sum += Memory.sourceEnergyAvailable[i]
+		if (Memory.sourceEnergyAvailable[i] > maxEnergy) maxEnergy = Memory.sourceEnergyAvailable[i]
+		if (Memory.sourceEnergyAvailable[i] < minEnergy) minEnergy = Memory.sourceEnergyAvailable[i]
 	}
 	let statistics = {
-		average: sum / Memory.energyAvailableToHarvest.length,
+		minutes: energyCheckDelay * Memory.sourceEnergyAvailable.length / 60,
+		average: sum / Memory.sourceEnergyAvailable.length,
 		minimum: minEnergy,
 		maximum: maxEnergy
 	}
-	log.info("Energy over %.2d minutes - average=%s min=%s max=%s",
-		energyCheckDelay * Memory.energyAvailableToHarvest.length / 60,
-		statistics.average,
-		statistics.minimum,
-		statistics.maximum
-	)
 	return statistics
 }
 
-getAssetStatistics = function(){
+printAssetStatistics = function(numMinutes){
 	if (!Memory.totalAssets) {
 		rememberAssets()
 	}
@@ -335,7 +397,7 @@ getAssetStatistics = function(){
 		if (Memory.totalAssets[i] > max) max = Memory.totalAssets[i]
 		if (Memory.totalAssets[i] < min) min = Memory.totalAssets[i]
 	}
-	let minutes = 30
+	let minutes = numMinutes || 30
 	let rangeToCompare = minutes * 60/assetCheckDelay
 	
 	let startIndex = Memory.totalAssetsIndex - rangeToCompare
@@ -355,10 +417,9 @@ getAssetStatistics = function(){
 		startValue,
 		endValue
 	)
-	//console.log(sprintf("INFO: assets over %.2d minutes - average=%s min=%s max=%s", assetCheckDelay * Memory.energyAvailableToHarvest.length / 60, statistics.average, statistics.minimum, statistics.maximum))
+	//console.log(sprintf("INFO: assets over %.2d minutes - average=%s min=%s max=%s", assetCheckDelay * Memory.sourceEnergyAvailable.length / 60, statistics.average, statistics.minimum, statistics.maximum))
 	return statistics
 }
-
 
 
 controllerPreviousCost = [
@@ -386,16 +447,22 @@ controllerPreviousTotalCost = [
 function rememberAssets(){
 	let totalAssets = getTotalAssets()
 	if (!Memory.totalAssets){
-		Memory.totalAssets = Array(50).fill(totalAssets)
+		Memory.totalAssets = Array(61).fill(totalAssets)
 		Memory.totalAssetsIndex = -1
 	}
 	Memory.totalAssetsIndex = (1 + Memory.totalAssetsIndex) % Memory.totalAssets.length
 	Memory.totalAssets[Memory.totalAssetsIndex] = totalAssets
 }
 
-rememberHistory = function(){
-	Memory.history.totalAssets = Memory.history.totalAssets || {}
-	Memory.history.totalAssets[Game.time] = getTotalAssets()
+function getTotalAssets(){
+	let energy = 0
+    for (let roomName in Game.rooms) {
+		let room = Game.rooms[roomName]
+		if (room) {
+			energy += room.getRoomAssets()
+		}
+	}
+	return energy
 }
 
 Room.prototype.getRoomAssets = function(){
@@ -411,34 +478,44 @@ Room.prototype.getRoomAssets = function(){
 		energy += storage[i].store[RESOURCE_ENERGY]
 	}
 	
-	return energy
-}
-
-function getTotalAssets(){
-	let energy = 0
-    for (let roomName in Game.rooms) {
-		let room = Game.rooms[roomName]
-		if (room) {
-			energy += room.getRoomAssets()
-		}
+	let walls = room.find(FIND_STRUCTURES, {filter: (t) => t.structureType == STRUCTURE_WALL || t.structureType == STRUCTURE_RAMPART})
+	for (i=0; i<walls.length; i++){
+		energy += walls[i].hits / 100
 	}
+	
+	return Math.round(energy)
+}
+
+getWallEnergy = function(roomName){
+	let room = Game.rooms[roomName]
+	if (!room) return room
+	
+	let energy = 0
+	
+	let walls = room.find(FIND_STRUCTURES, {filter: (t) => t.structureType == STRUCTURE_WALL || t.structureType == STRUCTURE_RAMPART})
+	for (i=0; i<walls.length; i++){
+		energy += walls[i].hits / 100
+	}
+	
 	return energy
 }
 
-function rememberAvailableEnergy(){
+function rememberSourceData(){
 	let currentEnergy = 0
+	let harvestSpots = 0
 	for (let sourceID in Memory.sources){
 		let source = Game.getObjectById(sourceID)
 		if (source) {
 			currentEnergy += source.energy
+			harvestSpots += source.maxHarvesters - source.numHarvesters
 		}
 	}
-	if (!Memory.energyAvailableToHarvest){
-		Memory.energyAvailableToHarvest = Array(50).fill(currentEnergy)
+	if (!Memory.sourceEnergyAvailable){
+		Memory.sourceEnergyAvailable = Array(50).fill(currentEnergy)
 		Memory.energyAvailableIndex = -1
 	}
-	Memory.energyAvailableIndex = (1 + Memory.energyAvailableIndex) % Memory.energyAvailableToHarvest.length
-	Memory.energyAvailableToHarvest[Memory.energyAvailableIndex] = currentEnergy
+	Memory.energyAvailableIndex = (1 + Memory.energyAvailableIndex) % Memory.sourceEnergyAvailable.length
+	Memory.sourceEnergyAvailable[Memory.energyAvailableIndex] = currentEnergy
 }
 
 function clearDeadPeople(){

@@ -20,20 +20,31 @@ Memory.defaultJobPriorities = {
 		{"key": "storeGet",  	"value": 8},
 		{"key": "idle",      	"value": 8},
 	],
+	upgrade: [
+		{"key": "salvage",   	"value": 8},
+		{"key": "storeGet",  	"value": 8},
+		{"key": "upgrade",   	"value": 8},
+		{"key": "harvest",   	"value": 8},
+		{"key": "harvestFar",	"value": 8},
+		{"key": "goHome",	 	"value": 8},
+		{"key": "upgradeFallback","value": 8},
+		{"key": "wall",   	 	"value": 8},
+		{"key": "idle",      	"value": 8},
+	],
 	normal: [
 		{"key": "salvage",   	"value": 8},
 		{"key": "energize",  	"value": 8},
 		{"key": "repairCritical","value": 8},
-		{"key": "upgrade",   	"value": 8},
 		{"key": "build",     	"value": 8},
+		{"key": "upgrade",   	"value": 8},
 		{"key": "repair",    	"value": 8},
-		{"key": "wall",   	 	"value": 8},
 		{"key": "storeAdd",  	"value": 8},
 		{"key": "harvest",   	"value": 8},
 		{"key": "harvestFar",	"value": 8},
 		{"key": "goHome",	 	"value": 8},
 		{"key": "storeGet",  	"value": 8},
 		{"key": "upgradeFallback","value": 8},
+		{"key": "wall",   	 	"value": 8},
 		{"key": "idle",      	"value": 8},
 	],
 	grow: [
@@ -118,7 +129,7 @@ Room.prototype.setTaskLimits = function() {
 		"repairCritical": 	4,
 		"build":      	6,
 		"repair":     	2,
-		"wall":    	  	10,
+		"wall":    	  	999,
 		"harvest":    	6,
 		"upgrade":    	2,
 		"harvestFar": 	15,
@@ -161,6 +172,7 @@ Room.prototype.setJobLimits = function() {
 		"recycle":	0,
 		"scout":	0,
 		"reserve":	0,
+		"upgrade":	0,
 	}
 	this.memory.jobMax = {
 		"attackMelee":  2,
@@ -172,6 +184,7 @@ Room.prototype.setJobLimits = function() {
 		"recycle":	999,
 		"scout":	999,
 		"reserve":	5,
+		"upgrade":	0,
 	}
 	if (this.memory.people){
 		for (i=0; i<this.memory.people.length; i++){
@@ -245,11 +258,11 @@ Room.prototype.changeJobCount = function(job, value) {
 }
 
 Room.prototype.getJobMax = function(job) {
-	if (!this.memory.jobCount) this.setJobLimits()
+	if (!this.memory.jobMax) this.setJobLimits()
 	return this.memory.jobMax[job]
 }
 	
 Room.prototype.setJobMax = function(job, value) {
-	if (!this.memory.jobCount) this.setJobLimits()
+	if (!this.memory.jobMax) this.setJobLimits()
 	this.memory.jobMax[job] = value	
 }

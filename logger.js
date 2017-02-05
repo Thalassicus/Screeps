@@ -10,7 +10,7 @@ var LEVEL_WARN	= "WARN"
 var LEVEL_ERROR	= "ERROR"
 var LEVEL_FATAL	= "FATAL"
 
-var levelType = {
+levelType = {
 	LEVEL_TRACE : 0,
 	LEVEL_DEBUG : 1,
 	LEVEL_INFO  : 2,
@@ -19,7 +19,7 @@ var levelType = {
 	LEVEL_FATAL : 5,
 }
 
-var levelString = [
+levelString = [
 	LEVEL_TRACE ,
 	LEVEL_DEBUG ,
 	LEVEL_INFO  ,
@@ -29,7 +29,7 @@ var levelString = [
 ]
 
 module.exports = {
-	levelThreshold: levelType.LEVEL_TRACE,
+	levelThreshold: levelType.LEVEL_DEBUG,
 	level: levelType.LEVEL_TRACE,
 	
 	setLevel: function (level){
@@ -46,7 +46,7 @@ module.exports = {
 		
 		// time
 		if (level >= levelType.LEVEL_INFO) {
-			output = sprintf("Tick %-3s %s", Game.time, output)
+			//output = sprintf("Tick %-3s %s", Game.time, output)
 		}
 		
 		// level
@@ -59,7 +59,7 @@ module.exports = {
 		
 		// save important messages for email
 		if (level >= levelType.LEVEL_INFO) {
-			Memory.log = Memory.log + "\n" + output
+			Memory.log = Memory.log + sprintf("\n%s Tick %-3s %s", new Date().toLocaleTimeString(), Game.time, output)
 			if (Memory.log.length > 1000000) {
 				Memory.log = "=== ERASED LOG FILE (OUT OF MEMORY) ==="
 			}

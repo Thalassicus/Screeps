@@ -137,19 +137,23 @@ Room.prototype.doSpawns = function(){
 				   t.structureType == STRUCTURE_CONTAINER || t.structureType == STRUCTURE_STORAGE
 				}).length > 0
 		//console.log(sprintf("DEBUG: roomHasStorage=%s numDoingJob.haul=%s this.energyCapacityAvailable=%s", roomHasStorage, numDoingJob["haul"], this.energyCapacityAvailable))
-		if (roomHasStorage && numDoingJob["haul"] < Math.floor(this.energyCapacityAvailable / 900)){
+		if (roomHasStorage && numDoingJob["haul"] < this.getJobMax("haul")){
 			return this.createPerson("haul")
 		}
 		
+		// Assign upgraders
+		if (numDoingJob["upgrade"] < this.getJobMax("upgrade")){
+			return this.createPerson("upgrade")
+		}
+		
 		// Assign guards
-		let maxGuards = this.energyCapacityAvailable < 1800 && 2 || 1
-		if (numDoingJob["attackMelee"] < maxGuards){
+		if (numDoingJob["attackMelee"] < this.getJobMax("attackMelee")){
 			return this.createPerson("attackMelee")
 		}
-		if (numDoingJob["attackRanged"] < maxGuards){
+		if (numDoingJob["attackRanged"] < this.getJobMax("attackRanged")){
 			return this.createPerson("attackRanged")
 		}
-		if (numDoingJob["heal"] < maxGuards){
+		if (numDoingJob["heal"] < this.getJobMax("heal")){
 			return this.createPerson("heal")
 		}
 	}
@@ -207,8 +211,8 @@ Room.prototype.getWorstWorkerCost = function(){
 Room.prototype.getBodyParts = function(job){
 	let numWorkers = this.countNumWorkers()
 	let scale = 1
-	let maxPersonCost = Math.min(this.energyCapacityAvailable, 3000) * (scale * (numWorkers+1) / this.memory.maxWorkers)
-	maxPersonCost = Math.max(200, Math.min(maxPersonCost, this.energyCapacityAvailable))
+	let maxWorkerCost = this.energyCapacityAvailable * (scale * (numWorkers+1) / this.memory.maxWorkers)
+	maxWorkerCost = Math.max(200, Math.min(maxWorkerCost, this.energyCapacityAvailable))
 	let personParts = []
 	let personCost = 0
 	let count = 0
@@ -225,16 +229,17 @@ Room.prototype.getBodyParts = function(job){
 			
 		case "grow":
 		case "normal":
-			count = Math.floor(Math.min(50/3, maxPersonCost / 200))
-			if (maxPersonCost == 300){				
+			if (maxWorkerCost == 300){				
 				personParts = [CARRY,WORK,MOVE,MOVE] // 0 extensions
 				personCost = 300
-			}else if (maxPersonCost == 350){
+			}else if (maxWorkerCost == 350){
 				personParts = [CARRY,WORK,WORK,MOVE,MOVE] // 1 extensions
 				personCost = 350
-			}else if (maxPersonCost == 550){
+			}else if (maxWorkerCost == 550){
 				personParts = [CARRY,CARRY,WORK,WORK,WORK,MOVE,MOVE,MOVE] // 5 extensions (max for level 2 controller)
+				personCost = 550
 			}else{
+				count = Math.floor(Math.min(50/3, maxWorkerCost / 200))
 				for (i=0; i<count; i++){
 					personParts.push(WORK)
 					personParts.push(CARRY)
@@ -244,8 +249,19 @@ Room.prototype.getBodyParts = function(job){
 			}
 			break
 			
+		case "upgrade":
+			count = Math.floor(Math.min((50-2)/2, maxWorkerCost / 300))
+			for (i=0; i<count; i++){
+				personParts.push(WORK)
+				personParts.push(WORK)
+				personParts.push(CARRY)
+				personParts.push(MOVE)
+				personCost += 300
+			}
+			break
+			
 		case "haul":
-			count = Math.floor(Math.min((50-2)/2, (maxPersonCost-150) / 150))
+			count = Math.floor(Math.min((50-2)/2, (maxWorkerCost-150) / 150))
 			for (i=0; i<count; i++){
 				personParts.push(CARRY)
 				personParts.push(CARRY)
@@ -258,7 +274,7 @@ Room.prototype.getBodyParts = function(job){
 			break
 			
 		case "attackMelee":
-			count = Math.floor(Math.min((50-3)/4, (maxPersonCost-200) / 190))
+			count = Math.floor(Math.min((50-3)/4, (maxWorkerCost-200) / 190))
 			
 			for (i=0; i<count; i++){
 				personParts.push(TOUGH)
@@ -277,7 +293,7 @@ Room.prototype.getBodyParts = function(job){
 			break
 			
 		case "attackRanged":
-			count = Math.floor(Math.min((50-3)/2, (maxPersonCost-200) / 200))
+			count = Math.floor(Math.min((50-3)/2, (maxWorkerCost-200) / 200))
 			
 			for (i=0; i<count; i++){
 				personParts.push(MOVE)
@@ -291,12 +307,12 @@ Room.prototype.getBodyParts = function(job){
 			personParts.push(CARRY)
 			personParts.push(MOVE)
 			personCost += 200
-			//console.log("DEBUG getBodyParts: energy="+this.energyCapacityAvailable+" numWorkers="+numWorkers+" targetPeople="+this.memory.maxWorkers+" maxPersonCost="+maxPersonCost+" personCost="+personCost)
+			//console.log("DEBUG getBodyParts: energy="+this.energyCapacityAvailable+" numWorkers="+numWorkers+" targetPeople="+this.memory.maxWorkers+" maxWorkerCost="+maxWorkerCost+" personCost="+personCost)
 			//console.log("DEBUG                   personParts="+personParts)
 			break
 			
 		case "heal":
-			count = Math.floor(Math.min((50-3)/2, (maxPersonCost-200) / 300))
+			count = Math.floor(Math.min((50-3)/2, (maxWorkerCost-200) / 300))
 			
 			for (i=0; i<count; i++){
 				personParts.push(MOVE)
@@ -310,7 +326,7 @@ Room.prototype.getBodyParts = function(job){
 			personParts.push(CARRY)
 			personParts.push(MOVE)
 			personCost += 200
-			//console.log("DEBUG getBodyParts: energy="+this.energyCapacityAvailable+" numWorkers="+numWorkers+" targetPeople="+this.memory.maxWorkers+" maxPersonCost="+maxPersonCost+" personCost="+personCost)
+			//console.log("DEBUG getBodyParts: energy="+this.energyCapacityAvailable+" numWorkers="+numWorkers+" targetPeople="+this.memory.maxWorkers+" maxWorkerCost="+maxWorkerCost+" personCost="+personCost)
 			//console.log("DEBUG                   personParts="+personParts)
 			break
 			
@@ -452,16 +468,22 @@ Room.prototype.repairWithTowers = function() {
 		
 	if (tower.energy < 0.25 * tower.energyCapacity) return
 	
+	let repairTargets
+	
+	// New ramparts
+	repairTargets = this.find(FIND_STRUCTURES, {filter: (t) =>
+		   t.hits <= 300
+		&& t.structureType == STRUCTURE_RAMPART
+	})
+	if (repairTargets[0]) return tower.repair(repairTargets[0])
+	
 	// Critically damaged structures
-	let repairTargets = this.find(FIND_STRUCTURES, {filter: (t) =>
+	repairTargets = this.find(FIND_STRUCTURES, {filter: (t) =>
 					   t.hits < 0.5 * t.hitsMax
 					&& t.structureType != STRUCTURE_WALL
 					&& t.structureType != STRUCTURE_RAMPART
 				})
-	if (repairTargets[0]) {
-		tower.repair(repairTargets[0])
-		return
-	}
+	if (repairTargets[0]) return tower.repair(repairTargets[0])
 	
 	// Damaged structures
 	if (tower.energy < 0.5 * tower.energyCapacity) return // save for defense
@@ -470,20 +492,43 @@ Room.prototype.repairWithTowers = function() {
 					&& t.structureType != STRUCTURE_WALL
 					&& t.structureType != STRUCTURE_RAMPART
 				})
-	if (repairTargets[0]) {
-		tower.repair(repairTargets[0])
-		return
+	if (repairTargets[0]) return tower.repair(repairTargets[0])
+	
+	// Critically damaged walls and ramparts
+	repairTargets = this.find(FIND_STRUCTURES, {filter: (t) => t.hits < 0.1 * this.getWallMax() && t.structureType == STRUCTURE_RAMPART })
+	if (repairTargets.length > 0){
+		let towers = this.find(FIND_MY_STRUCTURES, {filter: {structureType: STRUCTURE_TOWER}})
+		
+		for (i=0; i<towers.length; i++){
+			towers[i].repair(repairTargets[0])
+		}
+		return OK
 	}
 	
-	// Walls and ramparts
+	repairTargets = this.find(FIND_STRUCTURES, {filter: (t) => t.hits < 0.1 * this.getWallMax() && t.structureType == STRUCTURE_WALL })
+	if (repairTargets.length > 0){
+		let towers = this.find(FIND_MY_STRUCTURES, {filter: {structureType: STRUCTURE_TOWER}})
+		
+		for (i=0; i<towers.length; i++){
+			towers[i].repair(repairTargets[0])
+		}
+		return OK
+	}
+		
+	// Damaged walls and ramparts
+	repairTargets = this.find(FIND_STRUCTURES, {filter: (t) => t.hits < 0.25 * this.getWallMax() && t.structureType == STRUCTURE_RAMPART })
+	if (repairTargets[0]) return tower.repair(repairTargets[0])
+		
+	repairTargets = this.find(FIND_STRUCTURES, {filter: (t) => t.hits < 0.25 * this.getWallMax() && t.structureType == STRUCTURE_WALL })
+	if (repairTargets[0]) return tower.repair(repairTargets[0])
+	
+	// Finish walls and ramparts
 	repairTargets = this.find(FIND_STRUCTURES, {filter: (t) =>
 		   t.hits < this.getWallMax()
 		&& (t.structureType == STRUCTURE_WALL || t.structureType == STRUCTURE_RAMPART)
 	})
-	if (repairTargets[0]) {
-		tower.repair(repairTargets[0])
-		return
-	}
+	if (repairTargets[0]) return tower.repair(repairTargets[0])
+	return OK
 }
 
 Room.prototype.countHarvestSpots = function(){
@@ -524,14 +569,14 @@ Room.prototype.checkIsGrowing = function(){
 			this.memory.isGrowing = true
 			console.log("INFO:  Grow room "+this.name+" ("+numWorkers+"/"+this.memory.maxWorkers+")")
 			this.setJobLimits()
-			this.setTaskLimits()
+			//this.setTaskLimits()
 			this.resetPeople()
 		}
 	} else if (this.memory.isGrowing && numWorkers > 2 + 0.5 * this.memory.maxWorkers) {
 		this.memory.isGrowing = false
 		console.log("INFO:  Stop growing room "+this.name+" ("+numWorkers+"/"+this.memory.maxWorkers+")")
 		this.setJobLimits()
-		this.setTaskLimits()
+		//this.setTaskLimits()
 		this.resetPeople()
 	}
 }

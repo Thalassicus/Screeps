@@ -33,7 +33,7 @@ Creep.prototype.doTask = function() {
 	}
 	for (let taskInfo of this.memory.priorities){
 		if (this.canInterruptForTask(taskInfo.key)){
-			if (taskInfo.key != "salvage"){
+			if (taskInfo.key != "salvage" && !(this.type == "upgradeFallback" && taskInfo.key == "upgrade")){
 				console.log(sprintf("DEBUG doTask: %10s interrupts %s for %s in %s.", this.name, this.getTask(), taskInfo.key, this.room))
 			}
 			this.setTask(taskInfo.key)
@@ -476,7 +476,7 @@ module.exports.tasks.build = {
 	weight:				10,
 	say:				"🔨",
 	useHomeRoom:		false,
-	canInterruptThis:	true,
+	canInterruptThis:	false,
 	canInterruptOthers:	module.exports.canInterruptOthersToBuild,
 	canStart:			module.exports.canStartBuild,
 	canContinue:		module.exports.canContinueBuild,
@@ -512,8 +512,7 @@ module.exports.canStartHarvest = function(person) {
 	if (person.room.find(FIND_CONSTRUCTION_SITES).length > 0 && person.room.getTaskCount("build") < person.room.getTaskMax("build")){
 		if (person.room.find(FIND_STRUCTURES, {filter: (t) =>
 				   t.structureType == STRUCTURE_STORAGE
-				&& t.store
-				&& t.store[RESOURCE_ENERGY] > 0.25 * t.storeCapacity
+				&& t.store[RESOURCE_ENERGY] > 2000
 				}).length > 0){
 			//console.log("TRACE: do not harvest (build from storage)")
 			return false
@@ -863,26 +862,28 @@ module.exports.tasks.upgradeFallback = {
 
 // Wall
 module.exports.canInterruptOthersToWall = function(person){
-	return (person.ticksToLive % 10 == 0 && this.canStart(person))
+	return false
 }
 module.exports.canStartWall = function(person) {
+	/*
 	if (person.room.find(FIND_MY_STRUCTURES, {filter: {structureType: STRUCTURE_TOWER}}).length > 0){
 		if (!person.room.memory.isGrowing) return false // towers available
 	}
+	*/
 	return this.canContinue(person)
 }
 module.exports.canContinueWall = function(person) {
 	if (person.carry.energy <= 0) return false
 	if (person.room.memory.numHostiles > 0) return false
 	return person.room.find(FIND_STRUCTURES, {filter: (t) =>
-		   t.hits < person.room.getWallMax()
+		   t.hits < t.hitsMax//person.room.getWallMax()
 		&& (t.structureType == STRUCTURE_WALL || t.structureType == STRUCTURE_RAMPART)
 	}).length > 0
 }
 module.exports.doWall = function(person) {
 	let room = Game.rooms[person.memory.homeRoomName]
 	let target = person.pos.findClosestByPath(FIND_STRUCTURES, {filter: (t) =>
-		   t.hits < room.getWallMax()
+		   t.hits < t.hitsMax//person.room.getWallMax()
 		&& (t.structureType == STRUCTURE_WALL || t.structureType == STRUCTURE_RAMPART)
 	})
 	
@@ -1070,7 +1071,7 @@ module.exports.tasks.salvage = {
 
 // StoreAdd
 module.exports.canInterruptOthersToStoreAdd = function(person){
-	return false
+	return (person.getTask() == "guardPost" && this.canStart(person))
 }
 module.exports.canStartStoreAdd = function(person) {
 	if (person.getTask() == "storeGet") return false // don't immediately storeGet a withdrawl
