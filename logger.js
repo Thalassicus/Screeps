@@ -3,6 +3,8 @@
 // DateCreated: 2/29/2012 7:31:02 AM
 //------------------------------------------------------------
 
+require("sprintf")
+
 var LEVEL_TRACE	= "TRACE"
 var LEVEL_DEBUG	= "DEBUG"
 var LEVEL_INFO	= "INFO"
@@ -29,7 +31,7 @@ levelString = [
 ]
 
 module.exports = {
-	levelThreshold: levelType.LEVEL_DEBUG,
+	levelThreshold: levelType.LEVEL_TRACE,
 	level: levelType.LEVEL_TRACE,
 	
 	setLevel: function (level){
@@ -41,6 +43,8 @@ module.exports = {
 		if (level < this.levelThreshold) {
 			return false
 		}
+		
+		if (typeof arguments[0] != "string") arguments[0] = String(arguments[0])
 		
 		let output = sprintf(...arguments)
 		

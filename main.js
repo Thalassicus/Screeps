@@ -1,12 +1,10 @@
-
+var _ = require("lodash")
 var roomDirector = require("roomDirector")
 var taskDirector = require("taskDirector")
 var employers = require("employers")
-var log = require("logger")
-log.setLevel(levelType.LEVEL_DEBUG)
 require("sprintf")
-
-var _ = require("lodash")
+let log = require("logger")
+log.setLevel(levelType.LEVEL_DEBUG)
 
 Memory.scouts = Memory.scouts || {}
 Memory.sources = Memory.sources || {}
@@ -247,24 +245,25 @@ Room.prototype.validate = function(){
 
 Room.prototype.updateJobs = function(){
 	let room = this
-	room.setJobMax("haul", Math.floor(room.energyCapacityAvailable / 900))
+	room.setJobMax("feed", Math.floor(room.energyCapacityAvailable / 900))
 	
 	let [energy, energyCapacity] = room.getEnergy()
+	let numWorkers = room.countNumWorkers()
 	
-	if (energyCapacity > 0){
+	if (energyCapacity > 0 && numWorkers > 5 && room.controller.level < 8){
 		//*
 		log.trace("max upgraders=%s, numWorkers=%s energy=%s/%s",
-			Math.max(1, Math.round(0.8 * room.countNumWorkers() * energy / 1000000)),
-			room.countNumWorkers(),
+			Math.max(1, Math.round(0.8 * numWorkers * energy / 1000000)),
+			numWorkers,
 			energy,
 			energyCapacity
 		)
 		//*/
 		
 		log.trace("%s upgrade jobs = %s", room, Math.round(2 * energy/energyCapacity))
-		room.setJobMax("upgrade", Math.round(2 * energy/energyCapacity))
+		room.setJobMax("upgrade", Math.ceil(2 * energy/energyCapacity))
 		log.trace("%s upgrade jobs = %s", room, room.getJobMax("upgrade"))
-		room.setTaskMax("upgrade", Math.max(1, Math.min(room.countNumWorkers(), Math.round(0.8 * room.countNumWorkers() * energy/energyCapacity))))
+		room.setTaskMax("upgrade", Math.max(1, Math.min(numWorkers, Math.round(0.8 * numWorkers * energy/energyCapacity))))
 	}
 	
 	let maxGuards = room.energyCapacityAvailable < 1800 && 2 || 1

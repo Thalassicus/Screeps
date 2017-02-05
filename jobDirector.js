@@ -1,7 +1,9 @@
-  
 let _ = require("lodash")
 
 var taskDirector = require("taskDirector")
+require("sprintf")
+let log = require("logger")
+log.setLevel(levelType.LEVEL_DEBUG)
 
 module.exports = {
 	
@@ -12,6 +14,14 @@ module.exports = {
 //
 
 Memory.defaultJobPriorities = {
+	feed: [
+		{"key": "salvage",   	"value": 8},
+		{"key": "energize",  	"value": 8},
+		{"key": "goHome",	 	"value": 8},
+		{"key": "storeAdd",  	"value": 8},
+		{"key": "storeGet",  	"value": 8},
+		{"key": "idle",      	"value": 8},
+	],
 	haul: [
 		{"key": "salvage",   	"value": 8},
 		{"key": "energize",  	"value": 8},
@@ -19,6 +29,11 @@ Memory.defaultJobPriorities = {
 		{"key": "storeAdd",  	"value": 8},
 		{"key": "storeGet",  	"value": 8},
 		{"key": "idle",      	"value": 8},
+	],
+	mine: [
+		{"key": "mine",   		"value": 8},
+		{"key": "storeAdd",	 	"value": 8},
+		{"key": "wait",      	"value": 8},
 	],
 	upgrade: [
 		{"key": "salvage",   	"value": 8},
@@ -113,6 +128,7 @@ Room.prototype.setTaskLimits = function() {
 		"wall":    	  	0,
 		"harvest":    	0,
 		"upgrade":    	0,
+		"mine":    		0,
 		"harvestFar": 	0,
 		"goHome": 	  	0,
 		"storeAdd":     0,
@@ -132,6 +148,7 @@ Room.prototype.setTaskLimits = function() {
 		"wall":    	  	999,
 		"harvest":    	6,
 		"upgrade":    	2,
+		"mine":    		2,
 		"harvestFar": 	15,
 		"energize":   	5,
 		"goHome": 		999,
@@ -167,24 +184,28 @@ Room.prototype.setJobLimits = function() {
 		"attackRanged":	0,
 		"heal":		0,
 		"normal":	0,
+		"feed":		0,
 		"haul":		0,
 		"grow":		0,
 		"recycle":	0,
 		"scout":	0,
 		"reserve":	0,
 		"upgrade":	0,
+		"mine":		0,
 	}
 	this.memory.jobMax = {
 		"attackMelee":  2,
 		"attackRanged": 2,
 		"heal": 	1,
 		"normal":	999,
-		"haul":		4,
+		"feed":		4,
+		"haul":		1,
 		"grow":		999,
 		"recycle":	999,
 		"scout":	999,
 		"reserve":	5,
 		"upgrade":	0,
+		"mine":		1,
 	}
 	if (this.memory.people){
 		for (i=0; i<this.memory.people.length; i++){

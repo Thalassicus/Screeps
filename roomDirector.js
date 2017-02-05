@@ -1,7 +1,9 @@
 let _ = require("lodash")
 var jobDirector = require("jobDirector")
 var taskDirector = require("taskDirector")
-//let log = require("logger")
+require("sprintf")
+let log = require("logger")
+log.setLevel(levelType.LEVEL_DEBUG)
 
 //console.log("TRACE doSpawns: taskDirector.tasks.reserve.getTarget() = "+taskDirector.tasks.reserve.getTarget())
 
@@ -122,7 +124,7 @@ Room.prototype.doSpawns = function(){
 	
 	if (spawner.spawning) return ERR_BUSY
 	
-	// Assign scouts
+	// Scouts
 	for (let roomName in Memory.scouts) {
 		//console.log("TRACE: Memory.scouts["+roomName+"]="+Memory.scouts[roomName])
 		
@@ -132,34 +134,23 @@ Room.prototype.doSpawns = function(){
 	}	
 	
 	if (this.energyCapacityAvailable >= 550 && !this.memory.isGrowing){
-		// Assign haulers
 		let roomHasStorage = this.find(FIND_STRUCTURES, {filter: (t) => 
 				   t.structureType == STRUCTURE_CONTAINER || t.structureType == STRUCTURE_STORAGE
 				}).length > 0
-		//console.log(sprintf("DEBUG: roomHasStorage=%s numDoingJob.haul=%s this.energyCapacityAvailable=%s", roomHasStorage, numDoingJob["haul"], this.energyCapacityAvailable))
-		if (roomHasStorage && numDoingJob["haul"] < this.getJobMax("haul")){
-			return this.createPerson("haul")
+		if (roomHasStorage && numDoingJob["feed"] < this.getJobMax("feed")){
+			return this.createPerson("feed")
 		}
 		
-		// Assign upgraders
-		if (numDoingJob["upgrade"] < this.getJobMax("upgrade")){
-			return this.createPerson("upgrade")
-		}
-		
-		// Assign guards
-		if (numDoingJob["attackMelee"] < this.getJobMax("attackMelee")){
-			return this.createPerson("attackMelee")
-		}
-		if (numDoingJob["attackRanged"] < this.getJobMax("attackRanged")){
-			return this.createPerson("attackRanged")
-		}
-		if (numDoingJob["heal"] < this.getJobMax("heal")){
-			return this.createPerson("heal")
+		let jobs = ["attackRanged", "attackMelee", "heal", "haul", "upgrade", "mine"]
+		for (i=0; i<jobs.length; i++){
+			if (numDoingJob[jobs[i]] < this.getJobMax(jobs[i])){
+				return this.createPerson(jobs[i])
+			}
 		}
 	}
 	
 	if (this.energyCapacityAvailable >= 650){
-		// Assign claimers
+		// Claimers
 		if (numDoingJob["reserve"] < this.getJobMax("reserve")){
 			let target = taskDirector.tasks.reserve.getTarget()
 			if (taskDirector.tasks.reserve.isValidTarget(target)){
@@ -250,7 +241,7 @@ Room.prototype.getBodyParts = function(job){
 			break
 			
 		case "upgrade":
-			count = Math.floor(Math.min((50-2)/2, maxWorkerCost / 300))
+			count = Math.floor(Math.min(50/4, maxWorkerCost / 300))
 			for (i=0; i<count; i++){
 				personParts.push(WORK)
 				personParts.push(WORK)
@@ -260,8 +251,23 @@ Room.prototype.getBodyParts = function(job){
 			}
 			break
 			
+		case "mine":
+			count = Math.floor(Math.min((50-1)/5, (maxWorkerCost-50) / 450))
+			for (i=0; i<count; i++){
+				personParts.push(WORK)
+				personParts.push(WORK)
+				personParts.push(WORK)
+				personParts.push(WORK)
+				personParts.push(MOVE)
+				personCost += 450
+			}
+			personParts.push(CARRY)
+			personCost += 50
+			break
+			
 		case "haul":
-			count = Math.floor(Math.min((50-2)/2, (maxWorkerCost-150) / 150))
+		case "feed":
+			count = Math.floor(Math.min((50-2)/3, (maxWorkerCost-150) / 150))
 			for (i=0; i<count; i++){
 				personParts.push(CARRY)
 				personParts.push(CARRY)
@@ -355,7 +361,7 @@ Room.prototype.doTasks = function(){
 			person.setJob()
 		}
 		
-		if (person.ticksToLive < Memory.retirementAge && _.includes(["normal","grow","haul"], person.getJob())){
+		if (person.ticksToLive < Memory.retirementAge && _.includes(["normal","grow","feed","haul"], person.getJob())){
 			person.setJob("recycle", true)
 			continue
 		}

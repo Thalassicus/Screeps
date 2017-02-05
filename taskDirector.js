@@ -1,6 +1,9 @@
 let _ = require("lodash")
 let task = require("prototype.task")
 let tools = require("tools")
+require("sprintf")
+let log = require("logger")
+log.setLevel(levelType.LEVEL_TRACE)
 
 module.exports = {}
 
@@ -33,8 +36,8 @@ Creep.prototype.doTask = function() {
 	}
 	for (let taskInfo of this.memory.priorities){
 		if (this.canInterruptForTask(taskInfo.key)){
-			if (taskInfo.key != "salvage" && !(this.type == "upgradeFallback" && taskInfo.key == "upgrade")){
-				console.log(sprintf("DEBUG doTask: %10s interrupts %s for %s in %s.", this.name, this.getTask(), taskInfo.key, this.room))
+			if (taskInfo.key != "salvage" && !(task == "upgradeFallback" && taskInfo.key == "upgrade")){
+				console.log(sprintf("DEBUG doTask: %10s interrupts %s for %s in %s.", this.name, task, taskInfo.key, this.room))
 			}
 			this.setTask(taskInfo.key)
 			return module.exports.tasks[taskInfo.key].doTask(this)
@@ -209,14 +212,17 @@ Room.prototype.changeTaskMax = function(task, value) {
 
 module.exports.tasks = {}
 
-module.exports.doGenericTask = function(person, target, functionCall){
-	if (typeof target != "object") return ERR_NOT_FOUND
+module.exports.doTaskGeneric = function(person, target, functionCall){
+	if (!this.isValidTarget(target)) return ERR_NOT_FOUND
 	
 	let result = functionCall(target)
 	if (person.pos.isBorder() || result == ERR_NOT_IN_RANGE) {
 		person.moveTo(target)
 	}
 	return result
+}
+module.exports.isValidTargetGeneric = function(target){
+	return (target && typeof target == "object")
 }
 module.exports.setTarget = function(personName, newTargetID){
 	let targetArray = Memory.targetOf[Memory.creeps[personName].targetID]
@@ -265,7 +271,6 @@ module.exports.doAttack = function(person) {
 	if (!target) {
 		return false
 	}
-	//Memory.targetOf[target.id] = person.getTask()
 	
 	let result = person.attack(target)
 	person.moveTo(target)
@@ -304,6 +309,7 @@ module.exports.tasks.attackMelee = {
 	canContinue:		module.exports.canContinueAttack,
 	doTask:				module.exports.doAttack,
 	getTarget:			module.exports.getTargetToAttack,
+	isValidTarget:		module.exports.isValidTargetGeneric,
 }
 
 // AttackRanged
@@ -325,8 +331,7 @@ module.exports.canContinueAttackRanged = function(person) {
 }
 module.exports.doAttackRanged = function(person) {
 	let target = this.getTarget(person)
-	if (typeof target != "object") return ERR_NOT_FOUND
-	//Memory.targetOf[target.id] = person.getTask()
+	if (!this.isValidTarget(target)) return ERR_NOT_FOUND
 	
 	let result = person.rangedAttack(target)
 	person.moveTo(target)
@@ -347,6 +352,7 @@ module.exports.tasks.attackRanged = {
 	canContinue:		module.exports.canContinueAttackRanged,
 	doTask:				module.exports.doAttackRanged,
 	getTarget:			module.exports.getTargetToAttackRanged,
+	isValidTarget:		module.exports.isValidTargetGeneric,
 }
 
 // Heal
@@ -358,10 +364,10 @@ module.exports.canStartHeal = function(person) {
 }
 module.exports.canContinueHeal = function(person) {
 	if (person.getActiveBodyparts(HEAL) == 0) return false
-	return this.getTarget(person)
+	return this.isValidTarget(this.getTarget(person))
 }
 module.exports.doHeal = function(person) {
-	//return module.exports.doGenericTask(person, this.getTarget(person), person.heal)
+	//return module.exports.doTaskGeneric(person, this.getTarget(person), person.heal)
 	let target = this.getTarget(person)
 	if (!target == undefined) return ERR_NOT_FOUND
 	
@@ -391,6 +397,7 @@ module.exports.tasks.heal = {
 	canContinue:		module.exports.canContinueHeal,
 	doTask:				module.exports.doHeal,
 	getTarget:			module.exports.getTargetToHeal,
+	isValidTarget:		module.exports.isValidTargetGeneric,
 }
 
 // GuardPost
@@ -410,7 +417,6 @@ module.exports.doGuardPost = function(person) {
 		console.log("TRACE doGuardPost: Could not find Guard1 flag.")
 		return ERR_NOT_FOUND
 	}
-	//Memory.targetOf[target.id] = person.getTask()
 
 	let range = person.pos.getRangeTo(target)
 	if(person.pos.isBorder() || range == Infinity || range > 1) {
@@ -433,6 +439,7 @@ module.exports.tasks.guardPost = {
 	canContinue:		module.exports.canContinueGuardPost,
 	doTask:				module.exports.doGuardPost,
 	getTarget:			module.exports.getTargetToGuardPost,
+	isValidTarget:		module.exports.isValidTargetGeneric,
 }
 
 
@@ -459,8 +466,7 @@ module.exports.canContinueBuild = function(person) {
 module.exports.doBuild = function(person) {
 	let target = this.getTarget(person)
 	
-	if (typeof target != "object") return ERR_NOT_FOUND
-	//Memory.targetOf[target.id] = person.getTask()
+	if (!this.isValidTarget(target)) return ERR_NOT_FOUND
 	
 	let result = person.build(target)
 	if (person.pos.isBorder() || result == ERR_NOT_IN_RANGE) {
@@ -482,6 +488,61 @@ module.exports.tasks.build = {
 	canContinue:		module.exports.canContinueBuild,
 	doTask:				module.exports.doBuild,
 	getTarget:			module.exports.getTargetToBuild,
+	isValidTarget:		module.exports.isValidTargetGeneric,
+}
+
+// Mine
+module.exports.canInterruptOthersToMine = function(person){
+	return false
+}
+module.exports.canStartMine = function(person) {
+	return this.canContinue(person)
+}
+module.exports.canContinueMine = function(person) {
+	if (_.sum(person.carry) >= person.carryCapacity) return false
+	if (person.ticksToLive < 90) return false
+	return this.isValidTarget(this.getTarget(person))
+}
+module.exports.doMine = function(person) {
+	let target = this.getTarget(person)
+	
+	if (!this.isValidTarget(target)) return ERR_NOT_FOUND
+		
+	let result = person.harvest(target)
+	if (person.pos.isBorder() || result == ERR_NOT_IN_RANGE) {
+		person.moveTo(target)
+	}
+	//log.debug(result)
+	return result
+}
+module.exports.getTargetToMine = function(person) {
+	let targets = person.room.find(FIND_MINERALS)
+	if (!targets[0]) return ERR_NOT_FOUND
+	
+	let extractor = Game.getObjectById(person.room.memory.extractorID)
+	if (!extractor){
+		extractor = person.room.find(FIND_STRUCTURES, {filter: (t) => t.structureType == STRUCTURE_EXTRACTOR} )[0]
+		if (!extractor) return ERR_NOT_FOUND
+		person.room.memory.extractorID = extractor.id
+	}
+	if (extractor.cooldown == 0){
+		return targets[0]
+	}
+	
+	return ERR_NOT_FOUND
+}
+module.exports.tasks.mine = {
+	type:				"mine",
+	weight:				10,
+	say:				"⛏",
+	useHomeRoom:		false,
+	canInterruptThis:	false,
+	canInterruptOthers:	module.exports.canInterruptOthersToMine,
+	canStart:			module.exports.canStartMine,
+	canContinue:		module.exports.canContinueMine,
+	doTask:				module.exports.doMine,
+	getTarget:			module.exports.getTargetToMine,
+	isValidTarget:		module.exports.isValidTargetGeneric,
 }
 
 // Harvest
@@ -489,7 +550,8 @@ module.exports.canInterruptOthersToHarvest = function(person){
 	return false
 }
 module.exports.canStartHarvest = function(person) {
-	if (person.room.getJobCount("haul") == 0
+	// Should we energize from storage?
+	if (person.room.getJobCount("feed") == 0
 			&& person.canStartTask("storeGet")
 			&& person.room.getTaskCount("energize") < person.room.getTaskMax("energize")){
 		if (person.room.find(FIND_STRUCTURES, {filter: (t) => 
@@ -535,8 +597,7 @@ module.exports.canContinueHarvest = function(person) {
 module.exports.doHarvest = function(person) {
 	let target = person.pos.findClosestByPath(FIND_SOURCES_ACTIVE)
 	
-	if (typeof target != "object") return ERR_NOT_FOUND
-	//Memory.targetOf[target.id] = person.getTask()
+	if (!this.isValidTarget(target)) return ERR_NOT_FOUND
 		
 	let result = person.harvest(target)
 	if (person.pos.isBorder() || result == ERR_NOT_IN_RANGE) {
@@ -559,6 +620,7 @@ module.exports.tasks.harvest = {
 	canContinue:		module.exports.canContinueHarvest,
 	doTask:				module.exports.doHarvest,
 	getTarget:			module.exports.getTargetToHarvest,
+	isValidTarget:		module.exports.isValidTargetGeneric,
 }
 
 // HarvestFar
@@ -567,7 +629,7 @@ module.exports.canInterruptOthersToHarvestFar = function(person){
 }
 module.exports.canStartHarvestFar = function(person) {
 	// Should we energize from storage?
-	if (person.room.getJobCount("haul") == 0
+	if (person.room.getJobCount("feed") == 0
 			&& person.canStartTask("storeGet")
 			&& person.room.getTaskCount("energize") < person.room.getTaskMax("energize")){
 		if (person.room.find(FIND_STRUCTURES, {filter: (t) => 
@@ -657,8 +719,7 @@ module.exports.doHarvestFar = function(person) {
 	
 	//console.log("TRACE: "+person.name+" in "+person.room+" harvestFar at "+target+" target.room:"+target.room+" range:"+person.pos.getRangeTo(target))
 	
-	if (typeof target != "object") return ERR_NOT_FOUND
-	//Memory.targetOf[target.id] = person.getTask()
+	if (!this.isValidTarget(target)) return ERR_NOT_FOUND
 	
 	let result = person.harvest(target)
 		
@@ -689,6 +750,7 @@ module.exports.tasks.harvestFar = {
 	canContinue:		module.exports.canContinueHarvestFar,
 	doTask:				module.exports.doHarvestFar,
 	getTarget:			module.exports.getTargetToHarvestFar,
+	isValidTarget:		module.exports.isValidTargetGeneric,
 }
 
 // Repair
@@ -716,7 +778,6 @@ module.exports.doRepair = function(person) {
 		console.log("ERROR doRepair: "+person.name+" target is "+target+" in "+person.room)
 		return ERR_NOT_FOUND
 	}
-	//Memory.targetOf[target.id] = person.getTask()
 	
 	let result = person.repair(target)
 	if (person.pos.isBorder() || result == ERR_NOT_IN_RANGE) {
@@ -743,6 +804,7 @@ module.exports.tasks.repair = {
 	canContinue:		module.exports.canContinueRepair,
 	doTask:				module.exports.doRepair,
 	getTarget:			module.exports.getTargetToRepair,
+	isValidTarget:		module.exports.isValidTargetGeneric,
 }
 
 // RepairCritical
@@ -767,8 +829,7 @@ module.exports.doRepairCritical = function(person) {
 		&& t.structureType != STRUCTURE_WALL
 	})
 	
-	if (typeof target != "object") return ERR_NOT_FOUND
-	//Memory.targetOf[target.id] = person.getTask()
+	if (!this.isValidTarget(target)) return ERR_NOT_FOUND
 	
 	let result = person.repair(target)
 	if (person.pos.isBorder() || result == ERR_NOT_IN_RANGE) {
@@ -790,6 +851,7 @@ module.exports.tasks.repairCritical = {
 	canContinue:		module.exports.canContinueRepairCritical,
 	doTask:				module.exports.doRepairCritical,
 	getTarget:			module.exports.getTargetToRepairCritical,
+	isValidTarget:		module.exports.isValidTargetGeneric,
 }
 
 // Upgrade
@@ -807,7 +869,7 @@ module.exports.doUpgrade = function(person) {
 	let room = Game.rooms[person.memory.homeRoomName]
 	let target = room.controller
 	
-	if (typeof target != "object") return ERR_NOT_FOUND
+	if (!this.isValidTarget(target)) return ERR_NOT_FOUND
 
 	let result = person.upgradeController(target)
 	if (person.pos.isBorder() || result == ERR_NOT_IN_RANGE) {
@@ -829,6 +891,7 @@ module.exports.tasks.upgrade = {
 	canContinue:		module.exports.canContinueUpgrade,
 	doTask:				module.exports.doUpgrade,
 	getTarget:			module.exports.getTargetToUpgrade,
+	isValidTarget:		module.exports.isValidTargetGeneric,
 }
 
 // UpgradeFallback
@@ -842,7 +905,16 @@ module.exports.canContinueUpgradeFallback = function(person) {
 	return module.exports.canContinueUpgrade(person)
 }
 module.exports.doUpgradeFallback = function(person) {
-	return module.exports.doUpgrade(person)
+	let room = Game.rooms[person.memory.homeRoomName]
+	let target = room.controller
+	
+	if (!this.isValidTarget(target)) return ERR_NOT_FOUND
+
+	let result = person.upgradeController(target)
+	if (person.pos.isBorder() || result == ERR_NOT_IN_RANGE) {
+		person.moveTo(target)
+	}
+	return result
 }
 module.exports.getTargetToUpgradeFallback = function(person) {
 
@@ -858,6 +930,7 @@ module.exports.tasks.upgradeFallback = {
 	canContinue:		module.exports.canContinueUpgradeFallback,
 	doTask:				module.exports.doUpgradeFallback,
 	getTarget:			module.exports.getTargetToUpgradeFallback,
+	isValidTarget:		module.exports.isValidTargetGeneric,
 }
 
 // Wall
@@ -865,11 +938,6 @@ module.exports.canInterruptOthersToWall = function(person){
 	return false
 }
 module.exports.canStartWall = function(person) {
-	/*
-	if (person.room.find(FIND_MY_STRUCTURES, {filter: {structureType: STRUCTURE_TOWER}}).length > 0){
-		if (!person.room.memory.isGrowing) return false // towers available
-	}
-	*/
 	return this.canContinue(person)
 }
 module.exports.canContinueWall = function(person) {
@@ -887,7 +955,7 @@ module.exports.doWall = function(person) {
 		&& (t.structureType == STRUCTURE_WALL || t.structureType == STRUCTURE_RAMPART)
 	})
 	
-	if (typeof target != "object") return ERR_NOT_FOUND
+	if (!this.isValidTarget(target)) return ERR_NOT_FOUND
 	
 	let result = person.repair(target)
 	if (person.pos.isBorder() || result == ERR_NOT_IN_RANGE) {
@@ -909,6 +977,7 @@ module.exports.tasks.wall = {
 	canContinue:		module.exports.canContinueWall,
 	doTask:				module.exports.doWall,
 	getTarget:			module.exports.getTargetToWall,
+	isValidTarget:		module.exports.isValidTargetGeneric,
 }
 
 
@@ -926,7 +995,7 @@ module.exports.canInterruptOthersToEnergize = function(person){
 }
 module.exports.canStartEnergize = function(person) {
 	//if (person.room.name != person.memory.homeRoomName) return false
-	if (person.room.memory.numHostiles == 0 && person.getJob() != "haul" && person.room.getJobCount("haul") > 0) return false
+	if (person.room.memory.numHostiles == 0 && person.getJob() != "feed" && person.room.getJobCount("feed") > 0) return false
 	return this.canContinue(person)
 }
 module.exports.canContinueEnergize = function(person) {
@@ -997,6 +1066,13 @@ module.exports.getTargetToEnergize = function(person) {
 		&& !_.includes(Memory.targetOf[t.id], this.type)
 	})
 	
+	// labs
+	if (!target) target = person.pos.findClosestByPath(FIND_STRUCTURES, { filter: (t) =>
+		   t.structureType == STRUCTURE_LAB
+		&& t.energy < t.energyCapacity
+		&& !_.includes(Memory.targetOf[t.id], this.type)
+	})
+	
 	// finish towers
 	if (!target) target = person.pos.findClosestByPath(FIND_STRUCTURES, { filter: (t) =>
 		   (t.structureType == STRUCTURE_TOWER)
@@ -1042,7 +1118,7 @@ module.exports.canContinueSalvage = function(person) {
 module.exports.doSalvage = function(person) {
 	let target = this.getTarget(person)
 	
-	if (typeof target != "object") return ERR_NOT_FOUND
+	if (!this.isValidTarget(target)) return ERR_NOT_FOUND
 	
 	let result = person.pickup(target)
 	if (person.pos.isBorder() || result == ERR_NOT_IN_RANGE) {
@@ -1067,6 +1143,7 @@ module.exports.tasks.salvage = {
 	canContinue:		module.exports.canContinueSalvage,
 	doTask:				module.exports.doSalvage,
 	getTarget:			module.exports.getTargetToSalvage,
+	isValidTarget:		module.exports.isValidTargetGeneric,
 }
 
 // StoreAdd
@@ -1075,56 +1152,20 @@ module.exports.canInterruptOthersToStoreAdd = function(person){
 }
 module.exports.canStartStoreAdd = function(person) {
 	if (person.getTask() == "storeGet") return false // don't immediately storeGet a withdrawl
-	if (person.getJob() == "haul" && !person.canStartTask("energize")) return false
+	if (person.getJob() == "feed" && !person.canStartTask("energize")) return false
 	return this.canContinue(person)
 }
 module.exports.canContinueStoreAdd = function(person) {
 	let homeRoom = Game.rooms[person.memory.homeRoomName]
 	if (_.sum(person.carry) <= 0) return false
-	//if (homeRoom.memory.isGrowing && homeRoom.find(FIND_SOURCES_ACTIVE).length == 0) return false
 	
-	if (person.carry.energy > 0) {
-		// save room for minerals
-		if (person.room.find(FIND_STRUCTURES, {filter: (t) => 
-				   t.structureType == STRUCTURE_STORAGE
-				&& t.store[RESOURCE_ENERGY] < 0.9 * t.storeCapacity
-				}).length > 0) {
-			//console.log("TRACE: canContinueStoreAdd with STORAGE")
-			return true
-		}
-		if (person.room.find(FIND_STRUCTURES, {filter: (t) => 
-				   t.structureType == STRUCTURE_CONTAINER
-				&& t.store[RESOURCE_ENERGY] < t.storeCapacity
-				}).length > 0) {
-			//console.log("TRACE: canContinueStoreAdd with CONTAINER")
-			return true
-		}
-	} else {
-		//console.log("TRACE: canContinueStoreAdd check other resources")
-		if (person.room.find(FIND_STRUCTURES, {filter: (t) => 
-				   t.structureType == STRUCTURE_STORAGE
-				&& _.sum(t.store) < t.storeCapacity
-			}).length > 0) {
-			//console.log("TRACE: canContinueStoreAdd with CONTAINER or STORAGE")
-			return true
-		}
-	}
-	if (person.room.find(FIND_STRUCTURES, {filter: (t) => 
-			   (t.structureType == STRUCTURE_LINK)
-			&& t.energy < t.energyCapacity
-			&& person.room.memory.linkDestinationID != t.id
-			}).length > 0) {
-		//console.log("TRACE: canContinueStoreAdd with LINK")
-		//return true
-	}
-	return false
-
+	return this.isValidTarget(this.getTarget(person))
 }
 module.exports.doStoreAdd = function(person) {
 	let target = this.getTarget(person)
 	
-	if (typeof target != "object") return ERR_NOT_FOUND
-	//Memory.targetOf[target.id] = person.getTask()
+	if (!this.isValidTarget(target)) return ERR_NOT_FOUND
+	//log.debug("target=%s, typeof target = %s", target, typeof target)
 	
 	if (person.pos.isBorder() || person.pos.getRangeTo(target) > 1) {
 		person.moveTo(target)
@@ -1145,17 +1186,29 @@ module.exports.getTargetToStoreAdd = function(person) {
 	let possibleTargets = []
 	let target
 	
+	if (_.includes(["mine"], person.getJob())){
+		target = person.pos.findInRange(FIND_STRUCTURES, 3, { filter: (t) => 
+				   t.structureType == STRUCTURE_CONTAINER
+				&& _.sum(t.store) < t.storeCapacity
+			})[0]
+			
+		if (target) person.memory.targetID = target.id
+		return target
+	}
+	
 	// search this room
 	possibleTargets = possibleTargets.concat(person.room.find(FIND_STRUCTURES, { filter: (t) => 
 			   t.structureType == STRUCTURE_STORAGE
 			&& t.store
 			&& _.sum(t.store) < t.storeCapacity
 		}))
-	possibleTargets = possibleTargets.concat(person.room.find(FIND_STRUCTURES, { filter: (t) => 
-			   t.structureType == STRUCTURE_LINK
-			&& t.energy < t.energyCapacity
-			&& t.id != person.room.memory.linkDestinationID
-		}))
+	if (person.carry.RESOURCE_ENERGY > 0){
+		possibleTargets = possibleTargets.concat(person.room.find(FIND_STRUCTURES, { filter: (t) => 
+				   t.structureType == STRUCTURE_LINK
+				&& t.energy < t.energyCapacity
+				&& t.id != person.room.memory.linkDestinationID
+			}))
+	}
 	if (possibleTargets.length == 0) {		
 		possibleTargets = possibleTargets.concat(person.room.find(FIND_STRUCTURES, { filter: (t) => 
 				   t.structureType == STRUCTURE_CONTAINER
@@ -1195,8 +1248,8 @@ module.exports.getTargetToStoreAdd = function(person) {
 	target = person.pos.findClosestByPath(possibleTargets)
 	if (target){
 		person.memory.targetID = target.id
-		return target
 	}
+	return target
 }
 module.exports.tasks.storeAdd = {
 	type:				"storeAdd", 
@@ -1206,7 +1259,8 @@ module.exports.tasks.storeAdd = {
 	canStart:			module.exports.canStartStoreAdd, 
 	canContinue:		module.exports.canContinueStoreAdd, 
 	doTask:				module.exports.doStoreAdd, 
-	getTarget:			module.exports.getTargetToStoreAdd
+	getTarget:			module.exports.getTargetToStoreAdd, 
+	isValidTarget:		module.exports.isValidTargetGeneric
 }
 
 // StoreGet
@@ -1218,7 +1272,7 @@ module.exports.canStartStoreGet = function(person) {
 	if (person.room.memory.isGrowing){
 		if (person.canStartTask("repairCritical") || person.canStartTask("build")) return this.canContinue(person)
 			
-		if (person.getJob() != "haul" && person.room.getJobCount("haul") > 0) return false
+		if (person.getJob() != "feed" && person.getJob() != "haul" && person.room.getJobCount("feed") > 0) return false
 	}
 	//if (person.getTask() == "storeGet") return false // don't immediately storeGet after storing
 	return this.canContinue(person)
@@ -1226,60 +1280,83 @@ module.exports.canStartStoreGet = function(person) {
 module.exports.canContinueStoreGet = function(person) {
 	let homeRoom = Game.rooms[person.memory.homeRoomName]
 	if (_.sum(person.carry) >= person.carryCapacity) return false
-	if (person.room.find(FIND_STRUCTURES, {filter: (t) =>
-			   (t.structureType == STRUCTURE_CONTAINER || t.structureType == STRUCTURE_STORAGE)
-			&& t.store
-			&& t.store[RESOURCE_ENERGY] > 0
-			}).length == 0){
-		return false
-}
-	if (person.room.memory.isGrowing && homeRoom.find(FIND_SOURCES_ACTIVE).length > 0 && person.room.find(FIND_STRUCTURES, {filter: (t) => 
-			   (t.structureType == STRUCTURE_EXTENSION || t.structureType == STRUCTURE_SPAWN)
-			&& t.energy < t.energyCapacity
-			}).length == 0){
-		return false
-}
-	return true
+	
+	return this.isValidTarget(this.getTarget(person))
 }
 module.exports.doStoreGet = function(person) {
 	let target = this.getTarget(person)
 	
-	if (typeof target != "object") return ERR_NOT_FOUND
-	//Memory.targetOf[target.id] = person.getTask()
+	if (!this.isValidTarget(target)) return ERR_NOT_FOUND
 	
 	if (person.pos.isBorder() || person.pos.getRangeTo(target) > 1) {
 		person.moveTo(target)
 	}
-	let result = person.withdraw(target, RESOURCE_ENERGY)
+	let result = null
+	if (person.getJob() != "haul"){
+		result = person.withdraw(target, RESOURCE_ENERGY)
+	}else{
+		for (let resourceType in target.store){
+			result = person.withdraw(target, resourceType)
+			if (result == OK) return result
+		}
+	}
 	return result
 }
-module.exports.getTargetToStoreGet = function(person) {
+module.exports.getTargetToStoreGet = function(person) {	
 	let homeRoom = Game.rooms[person.memory.homeRoomName]
-	let possibleTargets
-	
-	if (person.room == homeRoom){
-		possibleTargets = homeRoom.find(FIND_STRUCTURES, { filter: (t) => 
-			   t.structureType == STRUCTURE_LINK
-			&& t.energy > 0
-			&& t.id == homeRoom.memory.linkDestinationID
+	possibleTargets = person.room.find(FIND_STRUCTURES, { filter: (t) => 
+		   t.structureType == STRUCTURE_LINK
+		&& t.energy > 0
+		&& t.id == person.room.memory.linkDestinationID
+		})
+	if (possibleTargets.length > 0) return person.pos.findClosestByPath(possibleTargets)
+		
+	if (person.getJob() == "haul"){
+		let homeRoom = Game.rooms[person.memory.homeRoomName]
+		let availableStorage = homeRoom.find(FIND_STRUCTURES, { filter: (t) => 
+			   t.structureType == STRUCTURE_STORAGE
+			&& _.sum(t.store) < t.storeCapacity
 			})
-		if (possibleTargets.length > 0) return person.pos.findClosestByPath(possibleTargets)
+		//log.trace("%s available storage in %s", availableStorage, homeRoom)
+		if (availableStorage[0]){
+			for (let roomName in Game.rooms){
+				room = Game.rooms[roomName]
+				if (!room) continue
+				
+				possibleTargets = room.find(FIND_STRUCTURES, { filter: (t) => 
+					   t.structureType == STRUCTURE_CONTAINER
+					&& _.sum(t.store) >= person.carryCapacity - _.sum(person.carry)
+					})
+				//log.trace("Containers in %s: %s", room.name, possibleTargets)
+				if (possibleTargets.length > 0) {
+					return person.pos.findClosestByPath(possibleTargets)	
+				}
+			}
 			
-		possibleTargets = homeRoom.find(FIND_STRUCTURES, { filter: (t) => 
-			   (t.structureType == STRUCTURE_CONTAINER || t.structureType == STRUCTURE_STORAGE)
-			&& t.store[RESOURCE_ENERGY] > 0
-			})
-		if (possibleTargets.length > 0) return person.pos.findClosestByPath(possibleTargets)
-			
-		return ERR_NOT_FOUND
-}
+			for (let roomName in Game.rooms){
+				room = Game.rooms[roomName]
+				if (!room) continue
+				
+				possibleTargets = room.find(FIND_STRUCTURES, { filter: (t) => 
+					   t.structureType == STRUCTURE_CONTAINER
+					&& _.sum(t.store) >= 0
+					})
+				//log.trace("Containers in %s: %s", room.name, possibleTargets)
+				if (possibleTargets.length > 0) {
+					return person.pos.findClosestByPath(possibleTargets)	
+				}
+			}
+		}
 	
-	possibleTargets = homeRoom.find(FIND_STRUCTURES, { filter: (t) => 
-		   t.structureType == STRUCTURE_CONTAINER
-		&& t.store
+	}
+	
+	possibleTargets = person.room.find(FIND_STRUCTURES, { filter: (t) => 
+		   (t.structureType == STRUCTURE_CONTAINER || t.structureType == STRUCTURE_STORAGE)
 		&& t.store[RESOURCE_ENERGY] > 0
-		})			
-	return person.pos.findClosestByPath(possibleTargets)
+		})
+	if (possibleTargets.length > 0) return person.pos.findClosestByPath(possibleTargets)
+		
+	return ERR_NOT_FOUND
 }
 module.exports.tasks.storeGet = {
 	type:				"storeGet",
@@ -1288,9 +1365,10 @@ module.exports.tasks.storeGet = {
 	useHomeRoom:		false,
 	canInterruptOthers:	module.exports.canInterruptOthersToStoreGet,
 	canStart:			module.exports.canStartStoreGet,
-	canContinue: 	module.exports.canContinueStoreGet,
+	canContinue: 		module.exports.canContinueStoreGet,
 	doTask:				module.exports.doStoreGet,
 	getTarget:			module.exports.getTargetToStoreGet,
+	isValidTarget:		module.exports.isValidTargetGeneric,
 }
 
 
@@ -1336,6 +1414,7 @@ module.exports.tasks.goHome = {
 	canContinue:		module.exports.canContinueGoHome,
 	doTask:				module.exports.doGoHome,
 	getTarget:			module.exports.getTargetToGoHome,
+	isValidTarget:		module.exports.isValidTargetGeneric,
 }
 
 // Idle
@@ -1363,8 +1442,7 @@ module.exports.doIdle = function(person) {
 	
 	//console.log("TRACE: "+homeRoom+" idle target = "+target)
 	
-	if (typeof target != "object") return ERR_NOT_FOUND
-	//Memory.targetOf[target.id] = person.getTask()
+	if (!this.isValidTarget(target)) return ERR_NOT_FOUND
 
 	let range = person.pos.getRangeTo(target)
 	//console.log("TRACE: Range to "+target.name+" : "+person.pos.getRangeTo(target))
@@ -1389,6 +1467,37 @@ module.exports.tasks.idle = {
 	canContinue:		module.exports.canContinueIdle,
 	doTask:				module.exports.doIdle,
 	getTarget:			module.exports.getTargetToIdle,
+	isValidTarget:		module.exports.isValidTargetGeneric,
+}
+
+// Wait
+module.exports.canInterruptOthersToWait = function(person){
+	return false
+}
+module.exports.canStartWait = function(person) {
+	return true
+}
+module.exports.canContinueWait = function(person) {
+	return false
+}
+module.exports.doWait = function(person) {
+	return OK
+}
+module.exports.getTargetToWait = function(person) {
+
+}
+module.exports.tasks.wait = {
+	type:				"wait",
+	weight:				10,
+	say:				false,
+	useHomeRoom:		false,
+	canInterruptThis:	true,
+	canInterruptOthers:	module.exports.canInterruptOthersToWait,
+	canStart:			module.exports.canStartWait,
+	canContinue:		module.exports.canContinueWait,
+	doTask:				module.exports.doWait,
+	getTarget:			module.exports.getTargetToWait,
+	isValidTarget:		module.exports.isValidTargetGeneric,
 }
 
 // Recycle
@@ -1409,7 +1518,7 @@ module.exports.doRecycle = function(person) {
 		  t.structureType == STRUCTURE_SPAWN
 	})[0]
 	
-	if (typeof target != "object") return ERR_NOT_FOUND
+	if (!this.isValidTarget(target)) return ERR_NOT_FOUND
 
 	person.moveTo(target)
 	
@@ -1429,6 +1538,7 @@ module.exports.tasks.recycle = {
 	canContinue:		module.exports.canContinueRecycle,
 	doTask:				module.exports.doRecycle,
 	getTarget:			module.exports.getTargetToRecycle,
+	isValidTarget:		module.exports.isValidTargetGeneric,
 }
 
 // Reserve
@@ -1561,7 +1671,8 @@ module.exports.tasks.scout = {
 	canContinue:		module.exports.canContinueScout,
 	doTask:				module.exports.doScout,
 	getTarget:			module.exports.getTargetToScout,
+	isValidTarget:		module.exports.isValidTargetGeneric,
 }
 
 
- // end
+ //*/ end
