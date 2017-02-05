@@ -82,7 +82,7 @@ Room.prototype.doSpawns = function(){
 				for (let sourceID in Memory.sources) {
 					let source = Game.getObjectById(sourceID)
 					if (source) {
-						maxWorkers += source.energyCapacity / Math.max(1000, this.energyCapacityAvailable)
+						maxWorkers += source.energyCapacity / Math.max(1000, 0.5 * this.energyCapacityAvailable)
 					}
 				}
 				room.memory.maxWorkers = Math.round(maxWorkers)
@@ -94,7 +94,7 @@ Room.prototype.doSpawns = function(){
 	
 	// count workers
 	this.memory.people = this.memory.people || []
-	let numWorkers = this.countNumWorkers()
+	let numWorkers = this.getNumWorkers()
 	
 	if (!spawner) return ERR_NOT_OWNER
 	if (this.memory.isGrowing == undefined) this.memory.isGrowing = true
@@ -131,7 +131,7 @@ Room.prototype.doSpawns = function(){
 		if (Memory.scouts[roomName] == "none"){
 			if (this.createPerson("scout", roomName) == OK) return OK
 		}
-	}	
+	}
 	
 	if (this.energyCapacityAvailable >= 550 && !this.memory.isGrowing){
 		let roomHasStorage = this.find(FIND_STRUCTURES, {filter: (t) => 
@@ -141,7 +141,7 @@ Room.prototype.doSpawns = function(){
 			return this.createPerson("feed")
 		}
 		
-		let jobs = ["attackRanged", "attackMelee", "heal", "haul", "upgrade", "mine"]
+		let jobs = ["attackRanged", "attackMelee", "heal"]
 		for (i=0; i<jobs.length; i++){
 			if (numDoingJob[jobs[i]] < this.getJobMax(jobs[i])){
 				return this.createPerson(jobs[i])
@@ -159,6 +159,15 @@ Room.prototype.doSpawns = function(){
 					//console.log("DEBUG doSpawns: claim "+target+" in "+target.room.name+" ("+numDoingJob["reserve"]+"/"+this.getJobMax("reserve")+")")
 				}
 				return result
+			}
+		}
+	}
+	
+	if (this.energyCapacityAvailable >= 550 && !this.memory.isGrowing){
+		let jobs = ["haul", "upgrade", "mine"]
+		for (i=0; i<jobs.length; i++){
+			if (numDoingJob[jobs[i]] < this.getJobMax(jobs[i])){
+				return this.createPerson(jobs[i])
 			}
 		}
 	}
@@ -200,7 +209,7 @@ Room.prototype.getWorstWorkerCost = function(){
 }
 
 Room.prototype.getBodyParts = function(job){
-	let numWorkers = this.countNumWorkers()
+	let numWorkers = this.getNumWorkers()
 	let scale = 1
 	let maxWorkerCost = this.energyCapacityAvailable * (scale * (numWorkers+1) / this.memory.maxWorkers)
 	maxWorkerCost = Math.max(200, Math.min(maxWorkerCost, this.energyCapacityAvailable))
@@ -361,7 +370,7 @@ Room.prototype.doTasks = function(){
 			person.setJob()
 		}
 		
-		if (person.ticksToLive < Memory.retirementAge && _.includes(["normal","grow","feed","haul"], person.getJob())){
+		if (person.ticksToLive < Memory.retirementAge && _.includes(["normal","grow","feed","haul","mine"], person.getJob())){
 			person.setJob("recycle", true)
 			continue
 		}
@@ -378,9 +387,6 @@ Room.prototype.doTasks = function(){
 			let task = person.setTask()
 		}
 		let result = person.doTask()
-		if (result == OK) {
-			// pick new task and move
-		}
     }
 }
 
@@ -421,7 +427,7 @@ Room.prototype.towerAttack = function() {
 	towers.forEach(tower => tower.attack(hostiles[0]))
 }
 
-Room.prototype.countNumWorkers = function(){
+Room.prototype.getNumWorkers = function(){
 	let numWorkers = 0
 	for (i=0; i<this.memory.people.length; i++){
 		let person = Game.creeps[this.memory.people[i]]
@@ -569,7 +575,7 @@ Room.prototype.countHarvestSpots = function(){
 }
 
 Room.prototype.checkIsGrowing = function(){	
-	let numWorkers = this.countNumWorkers()
+	let numWorkers = this.getNumWorkers()
 	if (numWorkers < 0.5 * this.memory.maxWorkers){
 		if (!this.memory.isGrowing) {
 			this.memory.isGrowing = true

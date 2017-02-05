@@ -43,8 +43,11 @@ Creep.prototype.doTask = function() {
 			return module.exports.tasks[taskInfo.key].doTask(this)
 		}
 	}
-
-	return module.exports.tasks[task].doTask(this)
+	let result = module.exports.tasks[task].doTask(this)
+	if (!_.includes([OK, ERR_NOT_IN_RANGE, ERR_BUSY, ERR_NOT_FOUND], result)) {
+		//log.trace("%s doTask %s result %s.", this.name, task, result)
+	}
+	return result
 	//this.taskFunction[task](this)
 	
 }
@@ -123,6 +126,7 @@ Creep.prototype.setTask = function(forceTask) {
 Room.prototype.unassignTask = function(personName, task) {
 	this.changeTaskCount(task, -1)
 	let targetID = Memory.creeps[personName].targetID
+	/*
 	if (task == "harvestFar"){
 		let target = Game.getObjectById(targetID)
 		if (typeof target == "object" && Memory.sources[targetID]) {
@@ -130,6 +134,7 @@ Room.prototype.unassignTask = function(personName, task) {
 			Memory.creeps[personName].targetID = null
 		}
 	}
+	*/
 	if (targetID){
 		module.exports.setTarget(personName, null)
 	}
@@ -213,17 +218,28 @@ Room.prototype.changeTaskMax = function(task, value) {
 module.exports.tasks = {}
 
 module.exports.doTaskGeneric = function(person, target, functionCall){
-	if (!this.isValidTarget(target)) return ERR_NOT_FOUND
+	if (!this.isValidTarget(target)) {
+		person.setTarget(null)
+		return ERR_NOT_FOUND
+	}
 	
 	let result = functionCall(target)
 	if (person.pos.isBorder() || result == ERR_NOT_IN_RANGE) {
 		person.moveTo(target)
+	} else {
+		person.setTarget(null)
 	}
 	return result
 }
+
 module.exports.isValidTargetGeneric = function(target){
 	return (target && typeof target == "object")
 }
+
+Creep.prototype.setTarget = function(targetID){
+	module.exports.setTarget(this.name, targetID)
+}
+
 module.exports.setTarget = function(personName, newTargetID){
 	let targetArray = Memory.targetOf[Memory.creeps[personName].targetID]
 	if (targetArray){
@@ -236,10 +252,27 @@ module.exports.setTarget = function(personName, newTargetID){
 	}
 	if (newTargetID){
 		Memory.targetOf[newTargetID] = Memory.targetOf[newTargetID] || []
-		Memory.targetOf[newTargetID].push(Memory.creeps[personName].task)		
+		Memory.targetOf[newTargetID].push(Memory.creeps[personName].task)
+		if (Memory.creeps[personName].task == "harvestFar"){
+			Memory.sources[newTargetID].numHarvesters += 1
+		}
+	}else{
+		if (Memory.creeps[personName].task == "harvestFar"){
+			let oldTargetID = Memory.creeps[personName].targetID
+			if (Memory.sources[oldTargetID]){
+				Memory.sources[oldTargetID].numHarvesters = Math.max(0, Memory.sources[oldTargetID].numHarvesters - 1)
+			}else{
+				/*
+				This seems to occur when taskCount exceeds taskMax in rooms outside the home room,
+				such as when "repair" taskMax is 2 while more than 2 people try to repair a Container.
+				*/
+				log.debug("%s setTarget harvestFar oldTarget=%s in room %s", personName, Game.getObjectById(oldTargetID), Game.getObjectById(oldTargetID).room)
+			}
+		}
 	}
 	Memory.creeps[personName].targetID = newTargetID
 }
+
 module.exports.isTargetedFor = function(targetID, task){
 	return Memory.targetOf[targetID] && _.includes(Memory.targetOf[targetID], task)
 }
@@ -330,8 +363,16 @@ module.exports.canContinueAttackRanged = function(person) {
 	return false
 }
 module.exports.doAttackRanged = function(person) {
-	let target = this.getTarget(person)
-	if (!this.isValidTarget(target)) return ERR_NOT_FOUND
+	let target = Game.getObjectById(person.memory.targetID)
+	if (!this.isValidTarget(target)) {
+		target = this.getTarget(person)
+		person.setTarget(target && target.id)
+	}
+	
+	if (!this.isValidTarget(target)) {
+		person.setTarget(null)
+		return ERR_NOT_FOUND
+	}
 	
 	let result = person.rangedAttack(target)
 	person.moveTo(target)
@@ -464,13 +505,22 @@ module.exports.canContinueBuild = function(person) {
 	return (person.room.find(FIND_CONSTRUCTION_SITES).length > 0)
 }
 module.exports.doBuild = function(person) {
-	let target = this.getTarget(person)
+	let target = Game.getObjectById(person.memory.targetID)
+	if (!this.isValidTarget(target)) {
+		target = this.getTarget(person)
+		person.setTarget(target && target.id)
+	}
 	
-	if (!this.isValidTarget(target)) return ERR_NOT_FOUND
+	if (!this.isValidTarget(target)) {
+		person.setTarget(null)
+		return ERR_NOT_FOUND
+	}
 	
 	let result = person.build(target)
 	if (person.pos.isBorder() || result == ERR_NOT_IN_RANGE) {
 		person.moveTo(target)
+	} else {
+		person.setTarget(null)
 	}
 	return OK
 }
@@ -504,13 +554,22 @@ module.exports.canContinueMine = function(person) {
 	return this.isValidTarget(this.getTarget(person))
 }
 module.exports.doMine = function(person) {
-	let target = this.getTarget(person)
+	let target = Game.getObjectById(person.memory.targetID)
+	if (!this.isValidTarget(target)) {
+		target = this.getTarget(person)
+		person.setTarget(target && target.id)
+	}
 	
-	if (!this.isValidTarget(target)) return ERR_NOT_FOUND
+	if (!this.isValidTarget(target)) {
+		person.setTarget(null)
+		return ERR_NOT_FOUND
+	}
 		
 	let result = person.harvest(target)
 	if (person.pos.isBorder() || result == ERR_NOT_IN_RANGE) {
 		person.moveTo(target)
+	} else {
+		person.setTarget(null)
 	}
 	//log.debug(result)
 	return result
@@ -595,19 +654,28 @@ module.exports.canContinueHarvest = function(person) {
 
 }
 module.exports.doHarvest = function(person) {
-	let target = person.pos.findClosestByPath(FIND_SOURCES_ACTIVE)
+	let target = Game.getObjectById(person.memory.targetID)
+	if (!this.isValidTarget(target)) {
+		target = this.getTarget(person)
+		person.setTarget(target && target.id)
+	}
 	
-	if (!this.isValidTarget(target)) return ERR_NOT_FOUND
+	if (!this.isValidTarget(target)) {
+		person.setTarget(null)
+		return ERR_NOT_FOUND
+	}
 		
 	let result = person.harvest(target)
 	if (person.pos.isBorder() || result == ERR_NOT_IN_RANGE) {
 		person.moveTo(target)
+	} else {
+		person.setTarget(null)
 	}
 	return result
 
 }
 module.exports.getTargetToHarvest = function(person) {
-
+	return person.pos.findClosestByPath(FIND_SOURCES_ACTIVE)
 }
 module.exports.tasks.harvest = {
 	type:				"harvest",
@@ -691,6 +759,8 @@ module.exports.canContinueHarvestFar = function(person) {
 		//console.log("TRACE: "+person.name+" stop harvestFar in "+person.room+" (retire to home)")
 		return false
 	}
+	return this.isValidTarget(Game.getObjectById(person.memory.targetID)) || this.isValidTarget(this.getTarget(person))
+	
 	let targetID = person.memory.targetID
 	if (targetID && Game.getObjectById(targetID) && Game.getObjectById(targetID).energy && Game.getObjectById(targetID).energy <= 0) {
 		//console.log("TRACE: "+person.name+" stop harvestFar in "+person.room+" (source is empty)")
@@ -701,43 +771,42 @@ module.exports.canContinueHarvestFar = function(person) {
 
 }
 module.exports.doHarvestFar = function(person) {
-	//if(module.exports.isTargetToHarvestFar(person.memory.targetID)){
-	if ((!person.memory.targetID) || (typeof Game.getObjectById(person.memory.targetID) != "object")) {
-		for (let sourceID in Memory.sources){
-			if (!Game.getObjectById(sourceID)) return
-			if ((Game.getObjectById(sourceID).energy > 0) && (Memory.sources[sourceID].numHarvesters < Memory.sources[sourceID].maxHarvesters)){
-				person.memory.targetID = sourceID
-				Memory.sources[sourceID].numHarvesters += 1
-				//console.log("DEBUG: harvesting in "+Game.getObjectById(sourceID).room+" ("+ Memory.sources[sourceID].numHarvesters+"/"+ Memory.sources[sourceID].maxHarvesters+" harvesters) with "+person.name+"." )
-				//console.log("DEBUG: harvesting starts at "+sourceID+" in "+Game.getObjectById(sourceID).room+" ("+ Memory.sources[sourceID].numHarvesters+"/"+ Memory.sources[sourceID].maxHarvesters+" harvesters) with "+person.name+"." )
-				break
-			}
-		}
-	}
-	
 	let target = Game.getObjectById(person.memory.targetID)
+	if (!this.isValidTarget(target, person)) {
+		target = this.getTarget(person)
+		person.setTarget(target && target.id)
+	}
 	
 	//console.log("TRACE: "+person.name+" in "+person.room+" harvestFar at "+target+" target.room:"+target.room+" range:"+person.pos.getRangeTo(target))
 	
-	if (!this.isValidTarget(target)) return ERR_NOT_FOUND
+	if (!this.isValidTarget(target, person)) {
+		person.setTarget(null)
+		return ERR_NOT_FOUND
+	}
 	
 	let result = person.harvest(target)
 		
 	if (person.pos.isBorder() || result == ERR_NOT_IN_RANGE) {
 		person.moveTo(target)
-	} else if (result != OK){
-		//console.log("DEBUG: "+person.name+" cannot continue doHarvestFar (result = "+result+").")
-		person.setTask()
+	} else {
+		person.setTarget(null)
 	}
 	return result
 }
 module.exports.getTargetToHarvestFar = function(person) {
-
+	for (let sourceID in Memory.sources){
+		let source = Game.getObjectById(sourceID)
+		if (this.isValidTarget(source)){
+			return source
+		}
+	}
 }
-module.exports.isTargetToHarvestFar = function(targetID) {
-	if (!targetID) return false
-	let target = Game.getObjectById(targetID)
-	return (typeof target == "object") && target.energy
+module.exports.isValidTargetToHarvestFar = function(target, person) {
+	if (!module.exports.isValidTargetGeneric(target)) return false
+	if (!target.energy) return false
+	if (person) return true
+	let source = Memory.sources[target.id]
+	return source && source.numHarvesters < source.maxHarvesters
 }
 module.exports.tasks.harvestFar = {
 	type:				"harvestFar",
@@ -750,7 +819,7 @@ module.exports.tasks.harvestFar = {
 	canContinue:		module.exports.canContinueHarvestFar,
 	doTask:				module.exports.doHarvestFar,
 	getTarget:			module.exports.getTargetToHarvestFar,
-	isValidTarget:		module.exports.isValidTargetGeneric,
+	isValidTarget:		module.exports.isValidTargetToHarvestFar,
 }
 
 // Repair
@@ -772,16 +841,22 @@ module.exports.canContinueRepair = function(person) {
 	}).length > 0)
 }
 module.exports.doRepair = function(person) {
-	let target = this.getTarget(person)
+	let target = Game.getObjectById(person.memory.targetID)
+	if (!this.isValidTarget(target)) {
+		target = this.getTarget(person)
+		person.setTarget(target && target.id)
+	}
 	
-	if (!target || typeof target != "object") {
-		console.log("ERROR doRepair: "+person.name+" target is "+target+" in "+person.room)
+	if (!this.isValidTarget(target)) {
+		person.setTarget(null)
 		return ERR_NOT_FOUND
 	}
 	
 	let result = person.repair(target)
 	if (person.pos.isBorder() || result == ERR_NOT_IN_RANGE) {
 		person.moveTo(target)
+	} else {
+		person.setTarget(null)
 	}
 	//console.log("TRACE doRepair: "+person.name+" repair "+target+" result "+result)
 	return result
@@ -829,11 +904,16 @@ module.exports.doRepairCritical = function(person) {
 		&& t.structureType != STRUCTURE_WALL
 	})
 	
-	if (!this.isValidTarget(target)) return ERR_NOT_FOUND
+	if (!this.isValidTarget(target)) {
+		person.setTarget(null)
+		return ERR_NOT_FOUND
+	}
 	
 	let result = person.repair(target)
 	if (person.pos.isBorder() || result == ERR_NOT_IN_RANGE) {
 		person.moveTo(target)
+	} else {
+		person.setTarget(null)
 	}
 	return result
 }
@@ -869,11 +949,16 @@ module.exports.doUpgrade = function(person) {
 	let room = Game.rooms[person.memory.homeRoomName]
 	let target = room.controller
 	
-	if (!this.isValidTarget(target)) return ERR_NOT_FOUND
+	if (!this.isValidTarget(target)) {
+		person.setTarget(null)
+		return ERR_NOT_FOUND
+	}
 
 	let result = person.upgradeController(target)
 	if (person.pos.isBorder() || result == ERR_NOT_IN_RANGE) {
 		person.moveTo(target)
+	} else {
+		person.setTarget(null)
 	}
 	return result
 }
@@ -908,11 +993,16 @@ module.exports.doUpgradeFallback = function(person) {
 	let room = Game.rooms[person.memory.homeRoomName]
 	let target = room.controller
 	
-	if (!this.isValidTarget(target)) return ERR_NOT_FOUND
+	if (!this.isValidTarget(target)) {
+		person.setTarget(null)
+		return ERR_NOT_FOUND
+	}
 
 	let result = person.upgradeController(target)
 	if (person.pos.isBorder() || result == ERR_NOT_IN_RANGE) {
 		person.moveTo(target)
+	} else {
+		person.setTarget(null)
 	}
 	return result
 }
@@ -955,11 +1045,16 @@ module.exports.doWall = function(person) {
 		&& (t.structureType == STRUCTURE_WALL || t.structureType == STRUCTURE_RAMPART)
 	})
 	
-	if (!this.isValidTarget(target)) return ERR_NOT_FOUND
+	if (!this.isValidTarget(target)) {
+		person.setTarget(null)
+		return ERR_NOT_FOUND
+	}
 	
 	let result = person.repair(target)
 	if (person.pos.isBorder() || result == ERR_NOT_IN_RANGE) {
 		person.moveTo(target)
+	} else {
+		person.setTarget(null)
 	}
 	return result
 }
@@ -995,15 +1090,27 @@ module.exports.canInterruptOthersToEnergize = function(person){
 }
 module.exports.canStartEnergize = function(person) {
 	//if (person.room.name != person.memory.homeRoomName) return false
-	if (person.room.memory.numHostiles == 0 && person.getJob() != "feed" && person.room.getJobCount("feed") > 0) return false
+	//log.debug("canStartEnergize %s", person.name)
+	if (person.room.memory.numHostiles == 0
+			&& person.getJob() != "grow"
+			&& person.getJob() != "feed"
+			&& person.room.getJobCount("feed") > 0) {
+		//log.debug("false (A) %s %s %s %s", !person.room.memory.isGrowing, person.room.memory.numHostiles, person.getJob(), person.room.getJobCount("feed"))
+		return false
+	}
 	return this.canContinue(person)
 }
 module.exports.canContinueEnergize = function(person) {
-	if (person.carry.energy <= 0) return false
+	//log.debug("canContinueEnergize %s", person.name)
+	if (person.carry.energy <= 0) {
+		//log.debug("false (B)")
+		return false
+	}
 	if (person.room.find(FIND_STRUCTURES, {filter: (t) => 
 			   (t.structureType == STRUCTURE_EXTENSION || t.structureType == STRUCTURE_SPAWN)
 			&& t.energy < t.energyCapacity
 			}).length > 0){
+		//log.debug("true (C)")
 		return true
 	}
 	if (person.room.find(FIND_STRUCTURES, {filter: (t) => 
@@ -1012,19 +1119,18 @@ module.exports.canContinueEnergize = function(person) {
 			}).length > 0){
 		return true
 	}
+	//log.debug("false (d)")
 	return false
-
 }
 module.exports.doEnergize = function(person) {
 	let target = Game.getObjectById(person.memory.targetID)
 	if (!this.isValidTarget(target)) {
 		target = this.getTarget(person)
+		person.setTarget(target && target.id)
 	}
 	
 	if (!this.isValidTarget(target)) {
-		if (target != ERR_NOT_FOUND) {
-			console.log("ERROR doEnergize: target is "+target)
-		}
+		person.setTarget(null)
 		return ERR_NOT_FOUND
 	}
 	
@@ -1034,6 +1140,7 @@ module.exports.doEnergize = function(person) {
 	}
 	if (result == OK){
 		target = this.getTarget(person)
+		person.setTarget(target && target.id)
 		if (this.isValidTarget(target)) {
 			person.moveTo(target)
 		}
@@ -1080,7 +1187,6 @@ module.exports.getTargetToEnergize = function(person) {
 		//&& !_.includes(Memory.targetOf[t.id], this.type)
 	})
 	
-	module.exports.setTarget(person.name, target && target.id)
 	return target || ERR_NOT_FOUND
 }
 module.exports.isValidTargetToEnergize = function(target){
@@ -1116,13 +1222,22 @@ module.exports.canContinueSalvage = function(person) {
 
 }
 module.exports.doSalvage = function(person) {
-	let target = this.getTarget(person)
+	let target = Game.getObjectById(person.memory.targetID)
+	if (!this.isValidTarget(target)) {
+		target = this.getTarget(person)
+		person.setTarget(target && target.id)
+	}
 	
-	if (!this.isValidTarget(target)) return ERR_NOT_FOUND
+	if (!this.isValidTarget(target)) {
+		person.setTarget(null)
+		return ERR_NOT_FOUND
+	}
 	
 	let result = person.pickup(target)
 	if (person.pos.isBorder() || result == ERR_NOT_IN_RANGE) {
 		person.moveTo(target)
+	} else {
+		person.setTarget(null)
 	}
 	return result
 }
@@ -1152,24 +1267,29 @@ module.exports.canInterruptOthersToStoreAdd = function(person){
 }
 module.exports.canStartStoreAdd = function(person) {
 	if (person.getTask() == "storeGet") return false // don't immediately storeGet a withdrawl
-	if (person.getJob() == "feed" && !person.canStartTask("energize")) return false
+	if (person.getJob() == "feed" && !person.canStartTask("energize")){
+		//log.debug("%s carry=%s energy=%s", person.name, _.sum(person.carry), person.carry.RESOURCE_ENERGY)
+		if (_.sum(person.carry) == person.carry[RESOURCE_ENERGY]) return false
+	}
 	return this.canContinue(person)
 }
 module.exports.canContinueStoreAdd = function(person) {
-	let homeRoom = Game.rooms[person.memory.homeRoomName]
 	if (_.sum(person.carry) <= 0) return false
 	
 	return this.isValidTarget(this.getTarget(person))
 }
 module.exports.doStoreAdd = function(person) {
-	let target = this.getTarget(person)
-	
-	if (!this.isValidTarget(target)) return ERR_NOT_FOUND
-	//log.debug("target=%s, typeof target = %s", target, typeof target)
-	
-	if (person.pos.isBorder() || person.pos.getRangeTo(target) > 1) {
-		person.moveTo(target)
+	let target = Game.getObjectById(person.memory.targetID)
+	if (!this.isValidTarget(target)) {
+		target = this.getTarget(person)
+		person.setTarget(target && target.id)
 	}
+	
+	if (!this.isValidTarget(target)) {
+		person.setTarget(null)
+		return ERR_NOT_FOUND
+	}
+	
 	let result
 	for(let resource in person.carry ){
 		if (resource == RESOURCE_ENERGY && target.energy){
@@ -1177,7 +1297,11 @@ module.exports.doStoreAdd = function(person) {
 		} else {
 			result = person.transfer(target, resource, Math.min(person.carry[resource], target.storeCapacity - _.sum(target.store)))
 		}
-		//if (result != OK) console.log(person.name+" "+result)
+	}
+	if (person.pos.isBorder() || result == ERR_NOT_IN_RANGE) {
+		person.moveTo(target)
+	} else {
+		person.setTarget(null)
 	}
 	return result
 
@@ -1255,6 +1379,7 @@ module.exports.tasks.storeAdd = {
 	type:				"storeAdd", 
 	weight:				10, 
 	say:				"▼", 
+	canInterruptThis:	false,
 	canInterruptOthers:	module.exports.canInterruptOthersToStoreAdd,
 	canStart:			module.exports.canStartStoreAdd, 
 	canContinue:		module.exports.canContinueStoreAdd, 
@@ -1278,32 +1403,31 @@ module.exports.canStartStoreGet = function(person) {
 	return this.canContinue(person)
 }
 module.exports.canContinueStoreGet = function(person) {
-	let homeRoom = Game.rooms[person.memory.homeRoomName]
-	if (_.sum(person.carry) >= person.carryCapacity) return false
-	
+	if (_.sum(person.carry) >= person.carryCapacity) return false	
 	return this.isValidTarget(this.getTarget(person))
 }
 module.exports.doStoreGet = function(person) {
-	let target = this.getTarget(person)
-	
-	if (!this.isValidTarget(target)) return ERR_NOT_FOUND
-	
-	if (person.pos.isBorder() || person.pos.getRangeTo(target) > 1) {
-		person.moveTo(target)
+	let target = Game.getObjectById(person.memory.targetID)
+	if (!this.isValidTarget(target)) {
+		target = this.getTarget(person)
+		person.setTarget(target && target.id)
 	}
-	let result = null
-	if (person.getJob() != "haul"){
-		result = person.withdraw(target, RESOURCE_ENERGY)
-	}else{
-		for (let resourceType in target.store){
-			result = person.withdraw(target, resourceType)
-			if (result == OK) return result
-		}
+	
+	if (!this.isValidTarget(target)) {
+		person.setTarget(null)
+		return ERR_NOT_FOUND
+	}
+	
+	let result = person.withdraw(target, RESOURCE_ENERGY)
+	if (person.pos.isBorder() || result == ERR_NOT_IN_RANGE) {
+		person.moveTo(target)
+	} else {
+		person.setTarget(null)
 	}
 	return result
 }
 module.exports.getTargetToStoreGet = function(person) {	
-	let homeRoom = Game.rooms[person.memory.homeRoomName]
+	let target = null
 	possibleTargets = person.room.find(FIND_STRUCTURES, { filter: (t) => 
 		   t.structureType == STRUCTURE_LINK
 		&& t.energy > 0
@@ -1311,52 +1435,12 @@ module.exports.getTargetToStoreGet = function(person) {
 		})
 	if (possibleTargets.length > 0) return person.pos.findClosestByPath(possibleTargets)
 		
-	if (person.getJob() == "haul"){
-		let homeRoom = Game.rooms[person.memory.homeRoomName]
-		let availableStorage = homeRoom.find(FIND_STRUCTURES, { filter: (t) => 
-			   t.structureType == STRUCTURE_STORAGE
-			&& _.sum(t.store) < t.storeCapacity
-			})
-		//log.trace("%s available storage in %s", availableStorage, homeRoom)
-		if (availableStorage[0]){
-			for (let roomName in Game.rooms){
-				room = Game.rooms[roomName]
-				if (!room) continue
-				
-				possibleTargets = room.find(FIND_STRUCTURES, { filter: (t) => 
-					   t.structureType == STRUCTURE_CONTAINER
-					&& _.sum(t.store) >= person.carryCapacity - _.sum(person.carry)
-					})
-				//log.trace("Containers in %s: %s", room.name, possibleTargets)
-				if (possibleTargets.length > 0) {
-					return person.pos.findClosestByPath(possibleTargets)	
-				}
-			}
-			
-			for (let roomName in Game.rooms){
-				room = Game.rooms[roomName]
-				if (!room) continue
-				
-				possibleTargets = room.find(FIND_STRUCTURES, { filter: (t) => 
-					   t.structureType == STRUCTURE_CONTAINER
-					&& _.sum(t.store) >= 0
-					})
-				//log.trace("Containers in %s: %s", room.name, possibleTargets)
-				if (possibleTargets.length > 0) {
-					return person.pos.findClosestByPath(possibleTargets)	
-				}
-			}
-		}
-	
-	}
-	
 	possibleTargets = person.room.find(FIND_STRUCTURES, { filter: (t) => 
 		   (t.structureType == STRUCTURE_CONTAINER || t.structureType == STRUCTURE_STORAGE)
 		&& t.store[RESOURCE_ENERGY] > 0
 		})
-	if (possibleTargets.length > 0) return person.pos.findClosestByPath(possibleTargets)
 		
-	return ERR_NOT_FOUND
+	return person.pos.findClosestByPath(possibleTargets)
 }
 module.exports.tasks.storeGet = {
 	type:				"storeGet",
@@ -1369,6 +1453,108 @@ module.exports.tasks.storeGet = {
 	doTask:				module.exports.doStoreGet,
 	getTarget:			module.exports.getTargetToStoreGet,
 	isValidTarget:		module.exports.isValidTargetGeneric,
+}
+
+// GetHaul
+module.exports.canInterruptOthersToGetHaul = function(person){
+	return false
+}
+module.exports.canStartGetHaul = function(person) {
+	return this.canContinue(person)
+}
+module.exports.canContinueGetHaul = function(person) {
+	if (_.sum(person.carry) >= person.carryCapacity) return false	
+	return this.isValidTarget(this.getTarget(person))
+}
+module.exports.doGetHaul = function(person) {
+	let target = Game.getObjectById(person.memory.targetID)
+	if (!this.isValidTarget(target)) {
+		target = this.getTarget(person)
+		person.setTarget(target && target.id)
+	}
+	
+	if (!this.isValidTarget(target)) {
+		person.setTarget(null)
+		return ERR_NOT_FOUND
+	}
+	
+	let result = ERR_NOT_FOUND
+	for (let resourceType in target.store){
+		result = person.withdraw(target, resourceType)
+		if (result == OK) break
+	}
+	if (person.pos.isBorder() || person.pos.getRangeTo(target) > 1) {
+		person.moveTo(target)
+	}else{
+		let result = ERR_NOT_FOUND
+		for (let resourceType in target.store){
+			result = person.withdraw(target, resourceType)
+			if (result == OK) break
+		}
+		person.setTarget(null)
+	}
+	return result
+}
+module.exports.getTargetToGetHaul = function(person) {
+	let homeRoom = Game.rooms[person.memory.homeRoomName]
+	let target = null
+	let possibleTargets = []
+	possibleTargets = person.room.find(FIND_STRUCTURES, { filter: (t) => 
+		   t.structureType == STRUCTURE_LINK
+		&& t.energy > 0
+		&& t.id == person.room.memory.linkDestinationID
+		})
+	if (possibleTargets.length > 0) return person.pos.findClosestByPath(possibleTargets)
+		
+	let availableStorage = homeRoom.find(FIND_STRUCTURES, { filter: (t) => 
+		   t.structureType == STRUCTURE_STORAGE
+		&& _.sum(t.store) < t.storeCapacity
+		})
+	
+	if (!availableStorage[0]) return false
+	
+	// high-volume transfer
+	for (let roomName in Game.rooms){
+		room = Game.rooms[roomName]
+		if (!room) continue
+		
+		possibleTargets = possibleTargets.concat(room.find(FIND_STRUCTURES, { filter: (t) => 
+			   t.structureType == STRUCTURE_CONTAINER
+			&& _.sum(t.store) >= person.carryCapacity - _.sum(person.carry)
+			}))
+	}
+	
+	if (possibleTargets.length == 0){
+		// low-volume transfer
+		for (let roomName in Game.rooms){
+			room = Game.rooms[roomName]
+			if (!room) continue
+			
+			possibleTargets = possibleTargets.concat(room.find(FIND_STRUCTURES, { filter: (t) => 
+				   t.structureType == STRUCTURE_CONTAINER
+				&& _.sum(t.store) > 0
+				}))
+		}
+	}
+	
+	target = person.pos.findClosestByPath(possibleTargets)
+	if (!target) target = possibleTargets[0]
+	return target
+}
+module.exports.isValidTargetToGetHaul = function(target){
+	return module.exports.isValidTargetGeneric(target) && _.sum(target.store) > 0
+}
+module.exports.tasks.getHaul = {
+	type:				"getHaul",
+	weight:				10,
+	say:				"△...",
+	useHomeRoom:		false,
+	canInterruptOthers:	module.exports.canInterruptOthersToGetHaul,
+	canStart:			module.exports.canStartGetHaul,
+	canContinue: 		module.exports.canContinueGetHaul,
+	doTask:				module.exports.doGetHaul,
+	getTarget:			module.exports.getTargetToGetHaul,
+	isValidTarget:		module.exports.isValidTargetToGetHaul,
 }
 
 
@@ -1442,7 +1628,10 @@ module.exports.doIdle = function(person) {
 	
 	//console.log("TRACE: "+homeRoom+" idle target = "+target)
 	
-	if (!this.isValidTarget(target)) return ERR_NOT_FOUND
+	if (!this.isValidTarget(target)) {
+		person.setTarget(null)
+		return ERR_NOT_FOUND
+	}
 
 	let range = person.pos.getRangeTo(target)
 	//console.log("TRACE: Range to "+target.name+" : "+person.pos.getRangeTo(target))
@@ -1518,7 +1707,10 @@ module.exports.doRecycle = function(person) {
 		  t.structureType == STRUCTURE_SPAWN
 	})[0]
 	
-	if (!this.isValidTarget(target)) return ERR_NOT_FOUND
+	if (!this.isValidTarget(target)) {
+		person.setTarget(null)
+		return ERR_NOT_FOUND
+	}
 
 	person.moveTo(target)
 	
@@ -1549,17 +1741,29 @@ module.exports.canStartReserve = function(person) {
 	return true
 }
 module.exports.canContinueReserve = function(person) {
+	if (person.room.memory.numHostiles > 0) {
+		log.trace("%s stops %s in %s (under attack)", person.name, this.type, person.room)
+		return false
+	}
 	return true
 }
 module.exports.doReserve = function(person) {
 	let target = Game.getObjectById(person.memory.targetID)
 	if (!this.isValidTarget(target)) {
 		target = this.getTarget(person)
+		person.setTarget(target && target.id)
+	}
+	
+	if (!this.isValidTarget(target)) {
+		person.setTarget(null)
+		return ERR_NOT_FOUND
 	}
 
 	let result = person.reserveController(target)
 	if (person.pos.isBorder() || result == ERR_NOT_IN_RANGE) {
 		person.moveTo(target)
+	} else {
+		person.setTarget(null)
 	}
 	return result
 }
@@ -1572,45 +1776,52 @@ module.exports.getTargetToReserve = function(person) {
 			if (!targetOf || !_.includes(targetOf, this.type)){
 				target = room.controller
 				//console.log("TRACE getTargetToReserve: found unattended "+target+" for "+this.type+" in "+room.name)
+				if (person) person.setTarget(target && target.id)
+				return target || ERR_NOT_FOUND
 				break
 			}
 		}
 	}
-	if (!target){
-		// check for elderly claimers
-		for (let roomName in Memory.rooms){
-			let room = Game.rooms[roomName]
-			if (room && room.memory.reserve && this.isValidTarget(room.controller) ){
-				let numClaimers = 0
-				let numElderly = 0
-				let elderly = null
-				for (let personName in Game.creeps){
-					let person = Game.creeps[personName]
-					if (person && person.memory.targetID == room.controller.id){
-						numClaimers += 1
-						if (person.ticksToLive < Memory.retirementAge + 2*person.body.length){
-							numElderly += 1
-							elderly = person
-						}
+	
+	// check for elderly claimers
+	for (let roomName in Memory.rooms){
+		let room = Game.rooms[roomName]
+		if (room && room.memory.reserve && this.isValidTarget(room.controller) ){
+			let numClaimers = 0
+			let numElderly = 0
+			let elderly = null
+			for (let personName in Game.creeps){
+				let person = Game.creeps[personName]
+				if (person && person.memory.targetID == room.controller.id){
+					numClaimers += 1
+					if (person.ticksToLive < Memory.retirementAge + 2*person.body.length){
+						numElderly += 1
+						elderly = person
 					}
 				}
-				if (numClaimers == 1 && numElderly == 1){
-					target = room.controller
-					//console.log("TRACE getTargetToReserve: found elderly claimer "+elderly.name+" at "+target+" in "+room.name+" (ticksToLive="+elderly.ticksToLive+" retirement="+(Memory.retirementAge+2*elderly.body.length)+")")
-					break
-				}
+			}
+			if (numClaimers == 1 && numElderly == 1){
+				target = room.controller
+				//console.log("TRACE getTargetToReserve: found elderly claimer "+elderly.name+" at "+target+" in "+room.name+" (ticksToLive="+elderly.ticksToLive+" retirement="+(Memory.retirementAge+2*elderly.body.length)+")")
+				if (person) person.setTarget(target && target.id)
+				return target || ERR_NOT_FOUND
+				break
 			}
 		}
 	}
 	
-	if (person) module.exports.setTarget(person.name, target && target.id)
+	if (person) person.setTarget(target && target.id)
 	return target || ERR_NOT_FOUND
 }
 module.exports.isValidTargetToReserve = function(target){
-	if (!target || typeof target != "object") return false
-	if (target.level == undefined) return false
-	if (target.reservation && target.reservation.username != "Thal") return false
-	return true
+	if (!module.exports.isValidTargetGeneric(target)) return false
+	log.trace("isValidTargetToReserve target=%s generic=%s level=%s reservation=%s",
+		target,
+		module.exports.isValidTargetGeneric(target),
+		target.level,
+		target.reservation
+	)
+	return target.level && (!target.reservation || target.reservation.username == "Thal")
 }
 module.exports.tasks.reserve = {
 	type:				"reserve",

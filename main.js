@@ -1,3 +1,6 @@
+Memory.rooms = Memory.rooms || {}
+Memory.creeps = Memory.creeps || {}
+
 var _ = require("lodash")
 var roomDirector = require("roomDirector")
 var taskDirector = require("taskDirector")
@@ -9,7 +12,6 @@ log.setLevel(levelType.LEVEL_DEBUG)
 Memory.scouts = Memory.scouts || {}
 Memory.sources = Memory.sources || {}
 
-Memory.guards = Memory.guards || {}
 Memory.hostiles = Memory.hostiles || []
 
 Memory.hour = Memory.hour || new Date().getHours()
@@ -191,6 +193,34 @@ function validateRarely(){
 			}
 		}
 	}
+	
+	// validate targetOf list
+	for (let targetID in Memory.targetOf){
+		let targetArray = Memory.targetOf[targetID]
+		for (i=0; i<targetArray.length; i++){
+			let task = targetArray[i]
+			let isValid = false
+			for (let personName in Game.creeps){
+				if (targetID == Memory.creeps[personName].targetID){
+					isValid = true
+					break
+				}
+			}
+			if (!isValid){
+				let target = Game.getObjectById(targetID)
+				log.debug("%s believes it is targeted for %s, but no people found!", target, task)
+				if (targetArray){
+					_.pull(targetArray, task)
+					if (targetArray.length == 0) {
+						delete Memory.targetOf[targetID]
+					}else{
+						Memory.targetOf[targetID] = targetArray
+					}
+				}
+			}
+			
+		}
+	}
 }
 
 Room.prototype.validate = function(){
@@ -248,7 +278,11 @@ Room.prototype.updateJobs = function(){
 	room.setJobMax("feed", Math.floor(room.energyCapacityAvailable / 900))
 	
 	let [energy, energyCapacity] = room.getEnergy()
-	let numWorkers = room.countNumWorkers()
+	let numWorkers = room.getNumWorkers()
+	
+	let numExtractors = room.find(FIND_MY_STRUCTURES, {filter: (t) => t.structureType == STRUCTURE_EXTRACTOR} ).length
+	room.setJobMax("mine", numExtractors)
+	room.setJobMax("haul", numExtractors)
 	
 	if (energyCapacity > 0 && numWorkers > 5 && room.controller.level < 8){
 		//*
@@ -286,20 +320,26 @@ Room.prototype.getEnergy = function(){
 }
 
 Creep.prototype.validate = function() {
-	if (typeof Game.rooms[this.memory.homeRoomName] != "object") {
-		this.memory.homeRoomName = this.room.name
+	let person = this
+	if (typeof Game.rooms[person.memory.homeRoomName] != "object") {
+		person.memory.homeRoomName = person.room.name
 	}
-	let homeRoom = Game.rooms[this.memory.homeRoomName]
-	if (! _.includes(homeRoom.memory.people, this.name)) {
-		homeRoom.memory.people.push(this.name)
+	let homeRoom = Game.rooms[person.memory.homeRoomName]
+	if (! _.includes(homeRoom.memory.people, person.name)) {
+		homeRoom.memory.people.push(person.name)
 	}
-	//console.log("TRACE: "+this.name+" room controller: "+this.memory.homeRoom.controller.my)
+	//console.log("TRACE: "+person.name+" room controller: "+person.memory.homeRoom.controller.my)
 	if (homeRoom.controller.my != true) {
 		for (let spawnName in Game.spawns) {
-			this.memory.homeRoomName = Game.spawns[spawnName].room.name
+			person.memory.homeRoomName = Game.spawns[spawnName].room.name
 			break
 			//console.log("TRACE: "+spawnName+" room="+Game.spawns[spawnName].room)
 		}
+	}
+	if (homeRoom.memory.isGrowing && person.getJob() == "normal") {
+		person.setJob("grow")
+	}else if (!homeRoom.memory.isGrowing && person.getJob() == "grow"){
+		person.setJob("normal")
 	}
 }
 
@@ -333,13 +373,7 @@ Room.prototype.resetPeople = function(){
             console.log("Person "+personName+" is undefined!")
 			clearDeadPeople()
         } else {
-			if (this.memory.isGrowing && person.getJob() == "normal") {
-				person.setJob("grow")
-			}else if (!this.memory.isGrowing && person.getJob() == "grow"){
-				person.setJob("normal")
-			}else{
-				person.setJob()
-			}
+			person.setJob()
 		}
     }
 }
