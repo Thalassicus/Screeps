@@ -31,8 +31,8 @@ levelString = [
 ]
 
 module.exports = {
-	levelThreshold: levelType.LEVEL_TRACE,
-	level: levelType.LEVEL_TRACE,
+	levelThreshold: levelType.LEVEL_DEBUG,
+	level: levelType.LEVEL_DEBUG,
 	
 	setLevel: function (level){
 		this.levelThreshold = level
@@ -41,6 +41,7 @@ module.exports = {
 	message: function (){
 		let level = this.level
 		if (level < this.levelThreshold) {
+			//console.log("level "+level+"<"+this.levelThreshold)
 			return false
 		}
 		

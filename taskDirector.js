@@ -1,6 +1,6 @@
 let _ = require("lodash")
 let task = require("prototype.task")
-let tools = require("tools")
+var tools = require("tools")
 require("sprintf")
 let log = require("logger")
 log.setLevel(levelType.LEVEL_TRACE)
@@ -1767,12 +1767,15 @@ module.exports.canStartReserve = function(person) {
 }
 module.exports.canContinueReserve = function(person) {
 	if (person.room.memory.numHostiles > 0) {
-		log.trace("%s stops %s in %s (under attack)", person.name, this.type, person.room)
+		log.debug("%s stops %s in %s (under attack)", person.name, this.type, person.room)
 		return false
 	}
 	return true
 }
 module.exports.doReserve = function(person) {
+		//log.debug("%s doReserve", person.name)
+		return module.exports.doTaskGeneric(person, this.type, "reserveController")
+		/*
 	let target = Game.getObjectById(person.memory.targetID)
 	if (!this.isValidTarget(target)) {
 		target = this.getTarget(person)
@@ -1791,6 +1794,7 @@ module.exports.doReserve = function(person) {
 		person.setTarget(null)
 	}
 	return result
+	*/
 }
 module.exports.getTargetToReserve = function(person) {
 	let target = null
@@ -1846,7 +1850,7 @@ module.exports.isValidTargetToReserve = function(target){
 		target.level,
 		target.reservation
 	)
-	return target.level && (!target.reservation || target.reservation.username == "Thal")
+	return (target.level != undefined) && (!target.reservation || target.reservation.username == "Thal")
 }
 module.exports.tasks.reserve = {
 	type:				"reserve",

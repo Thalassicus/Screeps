@@ -3,7 +3,7 @@ var jobDirector = require("jobDirector")
 var taskDirector = require("taskDirector")
 require("sprintf")
 let log = require("logger")
-log.setLevel(levelType.LEVEL_DEBUG)
+log.setLevel(levelType.LEVEL_TRACE)
 
 //console.log("TRACE doSpawns: taskDirector.tasks.reserve.getTarget() = "+taskDirector.tasks.reserve.getTarget())
 
@@ -141,15 +141,23 @@ Room.prototype.doSpawns = function(){
 		}
 	}
 	
-	if (this.energyCapacityAvailable >= 650){
+	if (numWorkers > 5 && this.energyCapacityAvailable >= 650){
 		// Claimers
 		if (numDoingJob["reserve"] < this.getJobMax("reserve")){
 			let target = taskDirector.tasks.reserve.getTarget()
+			//log.debug("reserve target = %s", target)
 			if (taskDirector.tasks.reserve.isValidTarget(target)){
 				let result = this.createPerson("reserve")
 				if (result == OK) {
-					//console.log("DEBUG doSpawns: claim "+target+" in "+target.room.name+" ("+numDoingJob["reserve"]+"/"+this.getJobMax("reserve")+")")
+					//
 				}
+				log.debug("Claim %s in %s with result %s (%s/%s)",
+					target,
+					target.room.name,
+					result,
+					numDoingJob["reserve"],
+					this.getJobMax("reserve")
+				)
 				return result
 			}
 		}
@@ -538,7 +546,7 @@ Room.prototype.repairWithTowers = function() {
 Room.prototype.countHarvestSpots = function(){
 	let sources = this.find(FIND_SOURCES)
 	let harvestSpots = 0
-	if (_.includes(["W7N4"], this.name)){//sources.length > 1) { // HARDCODE reserved rooms
+	if (_.includes(["W8N3"], this.name)){//sources.length > 1) { // HARDCODE reserved rooms
 		this.memory.reserve = true
 	}else if (this.memory.reserve){
 		delete this.memory.reserve

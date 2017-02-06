@@ -5,7 +5,9 @@ var _ = require("lodash")
 var roomDirector = require("roomDirector")
 var taskDirector = require("taskDirector")
 var employers = require("employers")
+var statistics = require("statistics")
 require("sprintf")
+
 let log = require("logger")
 log.setLevel(levelType.LEVEL_DEBUG)
 
@@ -14,23 +16,12 @@ Memory.sources = Memory.sources || {}
 
 Memory.hostiles = Memory.hostiles || []
 
-Memory.hour = Memory.hour || new Date().getHours()
 Memory.log = Memory.log || ""
 
 let stopAllScripts = false
 
 // Delays in ticks
 let validateDelay = 10
-let energyCheckDelay = 10
-let assetCheckDelay = 60
-let historyDelay = 10
-
-/*
-for (let roomName in Game.rooms){
-	let room = Game.rooms[roomName]
-	if (room && room.memory.taskMax) room.memory.taskMax = 10
-}
-*/
 
 module.exports.loop = function () {
 	if (stopAllScripts) return
@@ -42,7 +33,6 @@ module.exports.loop = function () {
 	
 	//taskDirector.start()
 	
-    // Check for dead people
     for (let name in Memory.creeps) {
         if (Game.creeps[name] == undefined) {
 			clearDeadPeople()
@@ -54,20 +44,16 @@ module.exports.loop = function () {
 		validateRarely()
 	}
 	
-	if (Game.time % energyCheckDelay == 0){
-		rememberSourceData()
+	if (Game.time % statistics.energyCheckDelay == 0){
+		statistics.rememberSourceData()
 	}
 	
-	if (Game.time % assetCheckDelay == 0){
-		rememberAssets()
+	if (Game.time % statistics.assetCheckDelay == 0){
+		statistics.rememberAssets()
 	}
 	
-	if (Game.time % historyDelay == 0){
-		let hour = new Date().getHours()
-		if (hour != Memory.hour){
-			Memory.hour = hour
-			printStatistics()
-		}		
+	if (Game.time % statistics.historyDelay == 0){
+		statistics.logAll()	
 	}
 	
 	for (let personName in Game.creeps) {
@@ -100,6 +86,9 @@ module.exports.loop = function () {
 			if (!Memory.hostiles.includes(roomHostiles[i].id)){
 				Memory.hostiles.push(roomHostiles[i].id)
 			}
+		}
+		if (roomHostiles.length > 0){
+			log.info("%s hostiles appeared in %s.", roomHostiles.length, room.name)
 		}
 		
 		
@@ -375,215 +364,7 @@ Creep.prototype.validate = function() {
 	}
 }
 
-resetAll = function(){
-	for (let sourceID in Memory.sources) {
-		Memory.sources[sourceID].numHarvesters = 0
-	}
-    for (let roomName in Game.rooms) {
-		Game.rooms[roomName].resetAll()
-    }
-	return OK
-}
-
-Room.prototype.resetAll = function(){
-	this.setJobLimits()
-	this.setTaskLimits()
-	if (this.controller.my){
-		this.setWallMax()
-		this.resetPeople()
-	}
-	return OK
-}
-
-Room.prototype.resetPeople = function(){
-    //console.log("DEBUG:  "+this.name+".resetPeople()")
-    
-    for (let i=0; i<this.memory.people.length; i++) {
-		let personName = this.memory.people[i]
-		let person = Game.creeps[personName]
-        if (person == undefined){
-            console.log("Person "+personName+" is undefined!")
-			clearDeadPeople()
-        } else {
-			person.setJob()
-		}
-    }
-}
-
-
-//
-// Statistics
-//
-
-printStatistics = function(){
-	log.info("Total Assets = %s", getTotalAssets())
-	printAssetStatistics(60)
-	let energyStatistics = getStoredEnergyStatistics()
-	log.info("Energy over %.2d minutes - average=%s min=%s max=%s",
-		energyStatistics.minutes,
-		energyStatistics.average,
-		energyStatistics.minimum,
-		energyStatistics.maximum
-	)
-}
-
-getStoredEnergyStatistics = function(){
-	if (!Memory.sourceEnergyAvailable) {
-		rememberSourceData()
-	}
-	
-	let sum = 0
-	let minEnergy = 99999999
-	let maxEnergy = -1
-	for (i=0; i<Memory.sourceEnergyAvailable.length; i++){
-		sum += Memory.sourceEnergyAvailable[i]
-		if (Memory.sourceEnergyAvailable[i] > maxEnergy) maxEnergy = Memory.sourceEnergyAvailable[i]
-		if (Memory.sourceEnergyAvailable[i] < minEnergy) minEnergy = Memory.sourceEnergyAvailable[i]
-	}
-	let statistics = {
-		minutes: energyCheckDelay * Memory.sourceEnergyAvailable.length / 60,
-		average: sum / Memory.sourceEnergyAvailable.length,
-		minimum: minEnergy,
-		maximum: maxEnergy
-	}
-	return statistics
-}
-
-printAssetStatistics = function(numMinutes){
-	if (!Memory.totalAssets) {
-		rememberAssets()
-	}
-	
-	let sum = 0
-	let min = 99999999
-	let max = -1
-	for (i=0; i<Memory.totalAssets.length; i++){
-		sum += Memory.totalAssets[i]
-		if (Memory.totalAssets[i] > max) max = Memory.totalAssets[i]
-		if (Memory.totalAssets[i] < min) min = Memory.totalAssets[i]
-	}
-	let minutes = numMinutes || 30
-	let rangeToCompare = minutes * 60/assetCheckDelay
-	
-	let startIndex = Memory.totalAssetsIndex - rangeToCompare
-	let startValue = Memory.totalAssets[(startIndex >= 0) && startIndex || startIndex + Memory.totalAssets.length]
-	let endValue = Memory.totalAssets[Memory.totalAssetsIndex]
-	
-	let income = endValue - startValue
-	let statistics = {
-		average: sum / Memory.totalAssets.length,
-		minimum: min,
-		maximum: max,
-		income: income,
-	}
-	log.info("Average of %.2d profit/hour over the past %.2d minutes (from %s to %s energy).",
-		60 * statistics.income / minutes,
-		minutes,
-		startValue,
-		endValue
-	)
-	//console.log(sprintf("INFO: assets over %.2d minutes - average=%s min=%s max=%s", assetCheckDelay * Memory.sourceEnergyAvailable.length / 60, statistics.average, statistics.minimum, statistics.maximum))
-	return statistics
-}
-
-
-controllerPreviousCost = [
-	0			,
-	200			,
-	45000		,
-	135000		,
-	405000		,
-	1215000		,
-	3645000		,
-	10935000	,
-]
-
-controllerPreviousTotalCost = [
-	0			,
-	200			,
-	45200		,
-	180200		,
-	585200		,
-	1800200		,
-	5445200		,
-	16380200	,
-]
-
-function rememberAssets(){
-	let totalAssets = getTotalAssets()
-	if (!Memory.totalAssets){
-		Memory.totalAssets = Array(61).fill(totalAssets)
-		Memory.totalAssetsIndex = -1
-	}
-	Memory.totalAssetsIndex = (1 + Memory.totalAssetsIndex) % Memory.totalAssets.length
-	Memory.totalAssets[Memory.totalAssetsIndex] = totalAssets
-}
-
-function getTotalAssets(){
-	let energy = 0
-    for (let roomName in Game.rooms) {
-		let room = Game.rooms[roomName]
-		if (room) {
-			energy += room.getRoomAssets()
-		}
-	}
-	return energy
-}
-
-Room.prototype.getRoomAssets = function(){
-	let room = this
-	if (!room.controller.my) return 0
-	
-	let energy = 0
-	
-	energy += room.controller.progress + controllerPreviousTotalCost[room.controller.level]
-	
-	let storage = room.find(FIND_STRUCTURES, {filter: (t) => t.structureType == STRUCTURE_CONTAINER || t.structureType == STRUCTURE_STORAGE})
-	for (i=0; i<storage.length; i++){
-		energy += storage[i].store[RESOURCE_ENERGY]
-	}
-	
-	let walls = room.find(FIND_STRUCTURES, {filter: (t) => t.structureType == STRUCTURE_WALL || t.structureType == STRUCTURE_RAMPART})
-	for (i=0; i<walls.length; i++){
-		energy += walls[i].hits / 100
-	}
-	
-	return Math.round(energy)
-}
-
-getWallEnergy = function(roomName){
-	let room = Game.rooms[roomName]
-	if (!room) return room
-	
-	let energy = 0
-	
-	let walls = room.find(FIND_STRUCTURES, {filter: (t) => t.structureType == STRUCTURE_WALL || t.structureType == STRUCTURE_RAMPART})
-	for (i=0; i<walls.length; i++){
-		energy += walls[i].hits / 100
-	}
-	
-	return energy
-}
-
-function rememberSourceData(){
-	let currentEnergy = 0
-	let harvestSpots = 0
-	for (let sourceID in Memory.sources){
-		let source = Game.getObjectById(sourceID)
-		if (source) {
-			currentEnergy += source.energy
-			harvestSpots += source.maxHarvesters - source.numHarvesters
-		}
-	}
-	if (!Memory.sourceEnergyAvailable){
-		Memory.sourceEnergyAvailable = Array(50).fill(currentEnergy)
-		Memory.energyAvailableIndex = -1
-	}
-	Memory.energyAvailableIndex = (1 + Memory.energyAvailableIndex) % Memory.sourceEnergyAvailable.length
-	Memory.sourceEnergyAvailable[Memory.energyAvailableIndex] = currentEnergy
-}
-
-function clearDeadPeople(){
+clearDeadPeople = function(){
 	//console.log("DEBUG:  Person died.")
     for (let personName in Memory.creeps) {
         if (Game.creeps[personName] == undefined) {
@@ -629,3 +410,43 @@ function clearDeadPeople(){
 		}
 	}
 }
+
+resetAll = function(){
+	for (let sourceID in Memory.sources) {
+		Memory.sources[sourceID].numHarvesters = 0
+	}
+    for (let roomName in Game.rooms) {
+		Game.rooms[roomName].resetAll()
+    }
+	return OK
+}
+
+Room.prototype.resetAll = function(){
+	this.setJobLimits()
+	this.setTaskLimits()
+	if (this.controller.my){
+		this.setWallMax()
+		this.resetPeople()
+	}
+	return OK
+}
+
+Room.prototype.resetPeople = function(){
+    //console.log("DEBUG:  "+this.name+".resetPeople()")
+    
+    for (let i=0; i<this.memory.people.length; i++) {
+		let personName = this.memory.people[i]
+		let person = Game.creeps[personName]
+        if (person == undefined){
+            console.log("Person "+personName+" is undefined!")
+			clearDeadPeople()
+        } else {
+			person.setJob()
+		}
+    }
+}
+
+
+//
+// Statistics
+//
