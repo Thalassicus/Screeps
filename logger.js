@@ -67,6 +67,8 @@ module.exports = {
 			if (Memory.log.length > 1000000) {
 				Memory.log = "=== ERASED LOG FILE (OUT OF MEMORY) ==="
 			}
+		}else{
+			output = sprintf("Tick %-3s %s", Game.time, output)
 		}
 		
 		console.log(output)

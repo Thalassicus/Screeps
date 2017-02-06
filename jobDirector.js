@@ -15,7 +15,7 @@ module.exports = {
 
 Memory.defaultJobPriorities = {
 	feed: [
-		{"key": "salvage",   	"value": 8},
+		{"key": "pickup",   	"value": 8},
 		{"key": "energize",  	"value": 8},
 		{"key": "goHome",	 	"value": 8},
 		{"key": "storeAdd",  	"value": 8},
@@ -23,7 +23,7 @@ Memory.defaultJobPriorities = {
 		{"key": "idle",      	"value": 8},
 	],
 	haul: [
-		{"key": "salvage",   	"value": 8},
+		{"key": "pickup",   	"value": 8},
 		{"key": "energize",  	"value": 8},
 		{"key": "goHome",	 	"value": 8},
 		{"key": "storeAdd",  	"value": 8},
@@ -37,7 +37,7 @@ Memory.defaultJobPriorities = {
 		{"key": "wait",      	"value": 8},
 	],
 	upgrade: [
-		{"key": "salvage",   	"value": 8},
+		{"key": "pickup",   	"value": 8},
 		{"key": "storeGet",  	"value": 8},
 		{"key": "upgrade",   	"value": 8},
 		{"key": "harvest",   	"value": 8},
@@ -48,7 +48,7 @@ Memory.defaultJobPriorities = {
 		{"key": "idle",      	"value": 8},
 	],
 	normal: [
-		{"key": "salvage",   	"value": 8},
+		{"key": "pickup",   	"value": 8},
 		{"key": "energize",  	"value": 8},
 		{"key": "repairCritical","value": 8},
 		{"key": "build",     	"value": 8},
@@ -67,7 +67,7 @@ Memory.defaultJobPriorities = {
 		{"key": "energize",  	"value": 8},
 		{"key": "repairCritical","value": 8},
 		{"key": "build",     	"value": 8},
-		{"key": "salvage",   	"value": 8},
+		{"key": "pickup",   	"value": 8},
 		{"key": "storeGet",  	"value": 8},
 		{"key": "harvest",   	"value": 8},
 		{"key": "harvestFar",	"value": 8},
@@ -91,7 +91,7 @@ Memory.defaultJobPriorities = {
 	attackMelee: [
 		{"key": "attackMelee",  "value": 80},
 		{"key": "heal",    	 	"value": 80},
-		{"key": "salvage",   	"value": 8},
+		{"key": "pickup",   	"value": 8},
 		{"key": "storeAdd",  	"value": 8},
 		{"key": "goHome",	 	"value": 8},
 		{"key": "guardPost", 	"value": 8},
@@ -100,7 +100,7 @@ Memory.defaultJobPriorities = {
 	attackRanged: [
 		{"key": "attackRanged", "value": 80},
 		{"key": "heal",    	 	"value": 80},
-		{"key": "salvage",   	"value": 8},
+		{"key": "pickup",   	"value": 8},
 		{"key": "storeAdd",  	"value": 8},
 		{"key": "goHome",	 	"value": 8},
 		{"key": "guardPost", 	"value": 8},
@@ -108,7 +108,7 @@ Memory.defaultJobPriorities = {
 	],
 	heal: [
 		{"key": "heal",    	 	"value": 80},
-		{"key": "salvage",   	"value": 8},
+		{"key": "pickup",   	"value": 8},
 		{"key": "storeAdd",  	"value": 8},
 		{"key": "goHome",	 	"value": 8},
 		{"key": "guardPost", 	"value": 8},
@@ -121,7 +121,7 @@ Room.prototype.setTaskLimits = function() {
 		"attackMelee":  0,
 		"attackRanged": 0,
 		"heal": 		0,
-		"salvage":    	0,
+		"pickup":    	0,
 		"repairCritical": 0,
 		"energize":   	0,
 		"build":      	0,
@@ -142,10 +142,10 @@ Room.prototype.setTaskLimits = function() {
 		"recycle":    	0,
 	}
 	this.memory.taskMax = {
-		"salvage":    	6,
+		"pickup":    	6,
 		"repairCritical": 	4,
 		"build":      	6,
-		"repair":     	6,
+		"repair":     	10,
 		"wall":    	  	999,
 		"harvest":    	6,
 		"upgrade":    	2,

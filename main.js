@@ -25,6 +25,13 @@ let energyCheckDelay = 10
 let assetCheckDelay = 60
 let historyDelay = 10
 
+/*
+for (let roomName in Game.rooms){
+	let room = Game.rooms[roomName]
+	if (room && room.memory.taskMax) room.memory.taskMax = 10
+}
+*/
+
 module.exports.loop = function () {
 	if (stopAllScripts) return
 	
@@ -208,7 +215,7 @@ function validateRarely(){
 			}
 			if (!isValid){
 				let target = Game.getObjectById(targetID)
-				log.debug("%s believes it is targeted for %s, but no people found!", target, task)
+				log.debug("%s believes it is targeted for %s, but we found no matches!", target, task)
 				if (targetArray){
 					_.pull(targetArray, task)
 					if (targetArray.length == 0) {
@@ -219,6 +226,19 @@ function validateRarely(){
 				}
 			}
 			
+		}
+	}
+	for (let sourceID in Memory.sources) {
+		let harvesters = 0
+		for (let personName in Game.creeps){
+			let person = Game.creeps[personName]
+			if (person && person.memory.targetID == sourceID) {
+				harvesters += 1
+			}
+		}
+		if (harvesters != Memory.sources[sourceID].numHarvesters){
+			log.debug("Source %s thinks it has %s harvesters, but we counted %s.", sourceID, Memory.sources[sourceID].numHarvesters, harvesters)
+			Memory.sources[sourceID].numHarvesters = harvesters
 		}
 	}
 }
@@ -275,29 +295,41 @@ Room.prototype.validate = function(){
 
 Room.prototype.updateJobs = function(){
 	let room = this
-	room.setJobMax("feed", Math.floor(room.energyCapacityAvailable / 900))
 	
-	let [energy, energyCapacity] = room.getEnergy()
+	
+	let [storedEnergy, storedCapacity] = room.getStoredEnergy()
 	let numWorkers = room.getNumWorkers()
 	
-	let numExtractors = room.find(FIND_MY_STRUCTURES, {filter: (t) => t.structureType == STRUCTURE_EXTRACTOR} ).length
-	room.setJobMax("mine", numExtractors)
-	room.setJobMax("haul", numExtractors)
+	if (storedEnergy > 250000){
+		let minerals = room.find(FIND_MINERALS)[0]
+		if (minerals && minerals.mineralAmount > 500){
+			let numExtractors = room.find(FIND_MY_STRUCTURES, {filter: (t) => t.structureType == STRUCTURE_EXTRACTOR} ).length
+			room.setJobMax("mine", numExtractors)
+			room.setJobMax("haul", numExtractors)
+		}
+	}else{
+		room.setJobMax("mine", 0)
+		room.setJobMax("haul", 0)
+	}
 	
-	if (energyCapacity > 0 && numWorkers > 5 && room.controller.level < 8){
+	room.setJobMax("feed", Math.ceil(storedEnergy / 250000 ))
+	
+	if (storedCapacity > 0 && numWorkers > 5 && room.controller.level < 8){
 		//*
-		log.trace("max upgraders=%s, numWorkers=%s energy=%s/%s",
-			Math.max(1, Math.round(0.8 * numWorkers * energy / 1000000)),
+		log.trace("max upgraders=%s, numWorkers=%s storedEnergy=%s/%s",
+			Math.max(1, Math.round(0.8 * numWorkers * storedEnergy / 1000000)),
 			numWorkers,
-			energy,
-			energyCapacity
+			storedEnergy,
+			storedCapacity
 		)
 		//*/
 		
-		log.trace("%s upgrade jobs = %s", room, Math.round(2 * energy/energyCapacity))
-		room.setJobMax("upgrade", Math.ceil(2 * energy/energyCapacity))
+		log.trace("%s upgrade jobs = %s", room, Math.round(2 * storedEnergy/storedCapacity))
+		room.setJobMax("upgrade", Math.round(2 * storedEnergy/storedCapacity))
 		log.trace("%s upgrade jobs = %s", room, room.getJobMax("upgrade"))
-		room.setTaskMax("upgrade", Math.max(1, Math.min(numWorkers, Math.round(0.8 * numWorkers * energy/energyCapacity))))
+		room.setTaskMax("upgrade", Math.max(1, Math.min(numWorkers, Math.round(0.8 * numWorkers * storedEnergy/storedCapacity))))
+	}else{
+		room.setJobMax("upgrade", 0)
 	}
 	
 	let maxGuards = room.energyCapacityAvailable < 1800 && 2 || 1
@@ -306,7 +338,7 @@ Room.prototype.updateJobs = function(){
 	room.setJobMax("heal", maxGuards)
 }
 
-Room.prototype.getEnergy = function(){
+Room.prototype.getStoredEnergy = function(){
 	let room = this
 	let energy = 0
 	let energyCapacity = 0
@@ -386,7 +418,7 @@ Room.prototype.resetPeople = function(){
 printStatistics = function(){
 	log.info("Total Assets = %s", getTotalAssets())
 	printAssetStatistics(60)
-	let energyStatistics = getEnergyStatistics()
+	let energyStatistics = getStoredEnergyStatistics()
 	log.info("Energy over %.2d minutes - average=%s min=%s max=%s",
 		energyStatistics.minutes,
 		energyStatistics.average,
@@ -395,7 +427,7 @@ printStatistics = function(){
 	)
 }
 
-getEnergyStatistics = function(){
+getStoredEnergyStatistics = function(){
 	if (!Memory.sourceEnergyAvailable) {
 		rememberSourceData()
 	}

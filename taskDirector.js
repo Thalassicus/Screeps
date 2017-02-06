@@ -18,265 +18,282 @@ RoomPosition.prototype.isBorder = function(){
 // == TASK MANAGEMENT ==============================================
 // =================================================================
 
-Creep.prototype.doTask = function() {
-	let task = this.getTask()
-	if (!task) {
-		this.setTask()
-		task = this.getTask()
-	}
-	if (!task) {
-		console.log("WARN: "+this.name+" cannot do task "+task)
-		this.setTask()
-		return -1
-	}
-	if (!module.exports.tasks[task].doTask) {
-		console.log("ERROR: invalid task function for task:"+task)
-		this.setTask()
-		return -1
-	}
-	for (let taskInfo of this.memory.priorities){
-		if (this.canInterruptForTask(taskInfo.key)){
-			if (taskInfo.key != "salvage" && !(task == "upgradeFallback" && taskInfo.key == "upgrade")){
-				console.log(sprintf("DEBUG doTask: %10s interrupts %s for %s in %s.", this.name, task, taskInfo.key, this.room))
-			}
-			this.setTask(taskInfo.key)
-			return module.exports.tasks[taskInfo.key].doTask(this)
+taskActions:{
+	
+	Creep.prototype.doTask = function() {
+		let task = this.getTask()
+		if (!task) {
+			this.setTask()
+			task = this.getTask()
 		}
+		if (!task) {
+			console.log("WARN: "+this.name+" cannot do task "+task)
+			this.setTask()
+			return -1
+		}
+		if (!module.exports.tasks[task].doTask) {
+			console.log("ERROR: invalid task function for task:"+task)
+			this.setTask()
+			return -1
+		}
+		for (let taskInfo of this.memory.priorities){
+			if (this.canInterruptForTask(taskInfo.key)){
+				if (taskInfo.key != "pickup" && !(task == "upgradeFallback" && taskInfo.key == "upgrade")){
+					console.log(sprintf("DEBUG doTask: %10s interrupts %s for %s in %s.", this.name, task, taskInfo.key, this.room))
+				}
+				this.setTask(taskInfo.key)
+				return module.exports.tasks[taskInfo.key].doTask(this)
+			}
+		}
+		let result = module.exports.tasks[task].doTask(this)
+		if (!_.includes([OK, ERR_NOT_IN_RANGE, ERR_BUSY, ERR_NOT_FOUND], result)) {
+			//log.trace("%s doTask %s result %s.", this.name, task, result)
+		}
+		return result
+		//this.taskFunction[task](this)
+		
 	}
-	let result = module.exports.tasks[task].doTask(this)
-	if (!_.includes([OK, ERR_NOT_IN_RANGE, ERR_BUSY, ERR_NOT_FOUND], result)) {
-		//log.trace("%s doTask %s result %s.", this.name, task, result)
+
+	module.exports.doTaskGeneric = function(person, task, functionCall){
+		let target = Game.getObjectById(person.memory.targetID)
+		if (!module.exports.tasks[task].isValidTarget(target)) {
+			target = module.exports.tasks[task].getTarget(person)
+			person.setTarget(target && target.id)
+		}
+		
+		if (!module.exports.tasks[task].isValidTarget(target)) {
+			person.setTarget(null)
+			return ERR_NOT_FOUND
+		}
+		
+		let result = person[functionCall](target)
+		if (person.pos.isBorder() || result == ERR_NOT_IN_RANGE) {
+			person.moveTo(target)
+		} else if (result != OK) {
+			person.setTarget(null)
+		}
+		return result
 	}
-	return result
-	//this.taskFunction[task](this)
-	
+
+	Creep.prototype.canStartTask = function(task){
+		if (this.room.getTaskCount(task) >= this.room.getTaskMax(task)) {
+			return false
+		}
+		if (module.exports.tasks[task] == undefined) {
+			console.log("DEBUG: module.exports["+task+"] is undefined!")
+			return false
+		}
+		return module.exports.tasks[task].canStart(this)
+	}
+
+	Creep.prototype.canContinueTask = function(task){
+		if (task==undefined) {
+			task = this.getTask()
+		}
+		if (module.exports.tasks[task] == undefined) {
+			console.log("DEBUG taskDirector: module.exports["+task+"] is undefined!")
+			return false
+		}
+		return module.exports.tasks[task].canContinue(this)
+	}
+
+	Creep.prototype.canInterruptForTask = function(task){
+		if (this.getTask() == task) return false
+		if (!module.exports.tasks[this.getTask()].canInterruptThis) return false
+		if (this.room.getTaskCount(task) >= this.room.getTaskMax(task)) return false
+		
+		if (module.exports.tasks[task] == undefined) {
+			console.log("DEBUG: module.exports["+task+"] is undefined!")
+			return false
+		}
+		if (module.exports.tasks[task].canInterruptOthers == undefined){
+			console.log("DEBUG: canInterruptOthers is undefined for task "+task+"!")
+			return false
+		}
+		return module.exports.tasks[task].canInterruptOthers(this)
+	}
+
+	module.exports.isValidTargetGeneric = function(target){
+		return (target && typeof target == "object")
+	}
+
 }
 
-Creep.prototype.getTask = function(){
-	if (!this.memory.task){
-		console.log("WARN getTask: "+this.name+" task is "+this.memory.task+".")
-		//this.setTask()
-	}
-	return this.memory.task
-}
+taskManagement: {
 
-Creep.prototype.setTask = function(forceTask) {
-	if (this.memory.task == undefined){
-		this.memory.task = "idle"
-		this.room.changeTaskCount("idle", 1)
+	Creep.prototype.setTarget = function(targetID){
+		module.exports.setTarget(this.name, targetID)
 	}
-	if (this.memory.priorities == undefined) {
-		this.setJob("normal")
-		return
-	}
-	
-	let oldTask = this.memory.task
-	if (oldTask && this.memory.priorities.length <= 1) {
-		return oldTask
-	}
-	
-	let task = forceTask
-	if (task == undefined){
-		if (oldTask == "harvest" && this.room.memory.numHostiles == 0 && !this.room.memory.isGrowing && this.canStartTask("storeAdd")) {
-			task = "storeAdd"
-		} else {
-			for (let taskInfo of this.memory.priorities){
-				if (this.canStartTask(taskInfo.key)){
-					task = taskInfo.key
-					break
+
+	module.exports.setTarget = function(personName, newTargetID){
+		let targetArray = Memory.targetOf[Memory.creeps[personName].targetID]
+		let person = Game.creeps[personName]
+		if (targetArray){
+			_.pull(targetArray, Memory.creeps[personName].task)
+			if (targetArray.length == 0) {
+				delete Memory.targetOf[Memory.creeps[personName].targetID]
+			}else{
+				Memory.targetOf[Memory.creeps[personName].targetID] = targetArray
+			}
+		}
+		if (newTargetID){
+			Memory.targetOf[newTargetID] = Memory.targetOf[newTargetID] || []
+			Memory.targetOf[newTargetID].push(Memory.creeps[personName].task)
+			if (Memory.creeps[personName].task == "harvestFar" || (person && person.task == "harvest" && person.room != person.memory.homeRoom)){
+				Memory.sources[newTargetID].numHarvesters += 1
+			}
+		}else{
+			if (Memory.creeps[personName].task == "harvestFar" || (person && person.task == "harvest" && person.room != person.memory.homeRoom)){
+				let oldTargetID = Memory.creeps[personName].targetID
+				let oldTarget = Game.getObjectById(oldTargetID)
+				if (Memory.sources[oldTargetID]){
+					Memory.sources[oldTargetID].numHarvesters = Math.max(0, Memory.sources[oldTargetID].numHarvesters - 1)
+				}else{
+					/*
+					This seems to occur when taskCount exceeds taskMax in rooms outside the home room,
+					such as when "repair" taskMax is 2 while more than 2 people try to repair a Container.
+					*/
+					//log.debug("%s setTarget harvestFar oldTarget=%s in room %s", personName, oldTarget, oldTarget && oldTarget.room)
 				}
 			}
 		}
+		Memory.creeps[personName].targetID = newTargetID
 	}
-	
-	if (!task) {
-		console.log("ERROR setTask: No valid task for "+this.name+".")
-		return ERR_NOT_FOUND
+
+	module.exports.isTargetedFor = function(targetID, task){
+		return Memory.targetOf[targetID] && _.includes(Memory.targetOf[targetID], task)
 	}
-	
-	let sayString = module.exports.tasks[task].say
-	if (sayString){
-		this.say(sayString, true)
-	}
-	
-	let homeRoom = Game.rooms[this.memory.homeRoomName]
-	if (module.exports.tasks[task].useHomeRoom){
-		homeRoom.changeTaskCount(task, 1)
-	}else{
-		this.room.changeTaskCount(task, 1)
-	}
-	
-	if (!_.includes(["guardPost","idle","scout"], task)) {
-		//console.log("TRACE: " + this.room.getTaskCount(task) + "/" + this.room.getTaskMax(task) + " people doing " + task + " (current task: " + this.getTask() + ")")
-	}
-	if (oldTask) {
-		//if (oldTask == "storeGet") console.log(Game.time+" "+this.name+" say storeGet")
-		if (module.exports.tasks[oldTask].useHomeRoom){
-			homeRoom.unassignTask(this.name, oldTask)
-		} else {
-			this.room.unassignTask(this.name, oldTask)
+
+	Creep.prototype.getTask = function(){
+		if (!this.memory.task){
+			console.log("WARN getTask: "+this.name+" task is "+this.memory.task+".")
+			//this.setTask()
 		}
+		return this.memory.task
 	}
-	
-	this.memory.task = task
-	
-	return task
-}
 
-Room.prototype.unassignTask = function(personName, task) {
-	this.changeTaskCount(task, -1)
-	let targetID = Memory.creeps[personName].targetID
-	/*
-	if (task == "harvestFar"){
-		let target = Game.getObjectById(targetID)
-		if (typeof target == "object" && Memory.sources[targetID]) {
-			Memory.sources[targetID].numHarvesters = Math.max(0, Memory.sources[targetID].numHarvesters - 1)
-			Memory.creeps[personName].targetID = null
+	Creep.prototype.setTask = function(forceTask) {
+		let person = this
+		if (person.memory.task == undefined){
+			person.memory.task = "idle"
+			person.room.changeTaskCount("idle", 1)
 		}
-	}
-	*/
-	if (targetID){
-		module.exports.setTarget(personName, null)
-	}
-}
-
-Room.prototype.unassignJob = function(personName, job) {
-	this.changeJobCount(job, -1)
-}
-
-Creep.prototype.canContinueTask = function(task){
-	if (task==undefined) {
-		task = this.getTask()
-	}
-	if (module.exports.tasks[task] == undefined) {
-		console.log("ERROR taskDirector: module.exports["+task+"] is undefined!")
-		return false
-	}
-	return module.exports.tasks[task].canContinue(this)
-}
-
-Creep.prototype.canInterruptForTask = function(task){
-	if (this.getTask() == task) return false
-	if (!module.exports.tasks[this.getTask()].canInterruptThis) return false
-	if (this.room.getTaskCount(task) >= this.room.getTaskMax(task)) return false
-	
-	if (module.exports.tasks[task] == undefined) {
-		console.log("ERROR: module.exports["+task+"] is undefined!")
-		return false
-	}
-	if (module.exports.tasks[task].canInterruptOthers == undefined){
-		console.log("ERROR: canInterruptOthers is undefined for task "+task+"!")
-		return false
-	}
-	return module.exports.tasks[task].canInterruptOthers(this)
-}
-
-Creep.prototype.canStartTask = function(task){
-	if (this.room.getTaskCount(task) >= this.room.getTaskMax(task)) {
-		return false
-	}
-	if (module.exports.tasks[task] == undefined) {
-		console.log("ERROR: module.exports["+task+"] is undefined!")
-		return false
-	}
-	return module.exports.tasks[task].canStart(this)
-}
-
-Room.prototype.getTaskCount = function(task) {
-	if (!this.memory.taskCount) this.setTaskLimits()
-	return this.find(FIND_MY_CREEPS, {filter: (t) => t.getTask() == task}).length
-	//return this.memory.taskCount[task]
-}
-	
-Room.prototype.setTaskCount = function(task, value) {
-	if (!this.memory.taskCount) this.setTaskLimits()
-	this.memory.taskCount[task] = value
-}
-
-Room.prototype.changeTaskCount = function(task, value) {
-	if (!this.memory.taskCount) this.setTaskLimits()
-	this.memory.taskCount[task] += value
-}
-
-Room.prototype.getTaskMax = function(task) {
-	if (!this.memory.taskCount) this.setTaskLimits()
-	return this.memory.taskMax[task]
-}
-	
-Room.prototype.setTaskMax = function(task, value) {
-	if (!this.memory.taskCount) this.setTaskLimits()
-	this.memory.taskMax[task] = value	
-}
-	
-Room.prototype.changeTaskMax = function(task, value) {
-	if (!this.memory.taskCount) this.setTaskLimits()
-	this.memory.taskMax[task] += value
-}
-
-// In task functions, "this" is the task object, such as module.exports.tasks.attack
-
-module.exports.tasks = {}
-
-module.exports.doTaskGeneric = function(person, target, functionCall){
-	if (!this.isValidTarget(target)) {
-		person.setTarget(null)
-		return ERR_NOT_FOUND
-	}
-	
-	let result = functionCall(target)
-	if (person.pos.isBorder() || result == ERR_NOT_IN_RANGE) {
-		person.moveTo(target)
-	} else {
-		person.setTarget(null)
-	}
-	return result
-}
-
-module.exports.isValidTargetGeneric = function(target){
-	return (target && typeof target == "object")
-}
-
-Creep.prototype.setTarget = function(targetID){
-	module.exports.setTarget(this.name, targetID)
-}
-
-module.exports.setTarget = function(personName, newTargetID){
-	let targetArray = Memory.targetOf[Memory.creeps[personName].targetID]
-	if (targetArray){
-		_.pull(targetArray, Memory.creeps[personName].task)
-		if (targetArray.length == 0) {
-			delete Memory.targetOf[Memory.creeps[personName].targetID]
-		}else{
-			Memory.targetOf[Memory.creeps[personName].targetID] = targetArray
+		if (person.memory.priorities == undefined) {
+			person.setJob("normal")
+			return
 		}
-	}
-	if (newTargetID){
-		Memory.targetOf[newTargetID] = Memory.targetOf[newTargetID] || []
-		Memory.targetOf[newTargetID].push(Memory.creeps[personName].task)
-		if (Memory.creeps[personName].task == "harvestFar"){
-			Memory.sources[newTargetID].numHarvesters += 1
+		
+		let oldTask = person.memory.task
+		if (oldTask && person.memory.priorities.length <= 1) {
+			return oldTask
 		}
-	}else{
-		if (Memory.creeps[personName].task == "harvestFar"){
-			let oldTargetID = Memory.creeps[personName].targetID
-			if (Memory.sources[oldTargetID]){
-				Memory.sources[oldTargetID].numHarvesters = Math.max(0, Memory.sources[oldTargetID].numHarvesters - 1)
-			}else{
-				/*
-				This seems to occur when taskCount exceeds taskMax in rooms outside the home room,
-				such as when "repair" taskMax is 2 while more than 2 people try to repair a Container.
-				*/
-				log.debug("%s setTarget harvestFar oldTarget=%s in room %s", personName, Game.getObjectById(oldTargetID), Game.getObjectById(oldTargetID).room)
+		
+		let task = forceTask
+		if (task == undefined){
+			if (oldTask == "harvest" && person.room.memory.numHostiles == 0 && !person.room.memory.isGrowing && person.canStartTask("storeAdd")) {
+				task = "storeAdd"
+			} else {
+				for (let taskInfo of person.memory.priorities){
+					if (person.canStartTask(taskInfo.key)){
+						task = taskInfo.key
+						break
+					}
+				}
 			}
 		}
+		
+		if (!task) {
+			console.log("ERROR setTask: No valid task for "+person.name+".")
+			return ERR_NOT_FOUND
+		}
+		
+		let sayString = module.exports.tasks[task].say
+		if (sayString){
+			person.say(sayString, true)
+		}
+		
+		let homeRoom = Game.rooms[person.memory.homeRoomName]
+		if (module.exports.tasks[task].useHomeRoom){
+			homeRoom.changeTaskCount(task, 1)
+		}else{
+			person.room.changeTaskCount(task, 1)
+		}
+		
+		if (!_.includes(["guardPost","idle","scout"], task)) {
+			//console.log("TRACE: " + person.room.getTaskCount(task) + "/" + person.room.getTaskMax(task) + " people doing " + task + " (current task: " + person.getTask() + ")")
+		}
+		if (oldTask) {
+			//if (oldTask == "storeGet") console.log(Game.time+" "+person.name+" say storeGet")
+			if (module.exports.tasks[oldTask].useHomeRoom){
+				homeRoom.unassignTask(person.name, oldTask)
+			} else {
+				person.room.unassignTask(person.name, oldTask)
+			}
+		}
+		
+		person.memory.task = task
+		person.setTarget(null)
+		
+		return task
 	}
-	Memory.creeps[personName].targetID = newTargetID
+
+	Room.prototype.unassignTask = function(personName, task) {
+		this.changeTaskCount(task, -1)
+		//if (task != "idle") log.debug("Unassign %s from %s.", task, personName)
+		module.exports.setTarget(personName, null)
+		/*
+		if (task == "harvestFar"){
+			let target = Game.getObjectById(targetID)
+			if (typeof target == "object" && Memory.sources[targetID]) {
+				Memory.sources[targetID].numHarvesters = Math.max(0, Memory.sources[targetID].numHarvesters - 1)
+				Memory.creeps[personName].targetID = null
+			}
+		}
+		*/
+	}
+
+	Room.prototype.unassignJob = function(personName, job) {
+		this.changeJobCount(job, -1)
+	}
+
 }
 
-module.exports.isTargetedFor = function(targetID, task){
-	return Memory.targetOf[targetID] && _.includes(Memory.targetOf[targetID], task)
+taskTracking: {
+	
+	Room.prototype.getTaskCount = function(task) {
+		if (!this.memory.taskCount) this.setTaskLimits()
+		return this.find(FIND_MY_CREEPS, {filter: (t) => t.getTask() == task}).length
+		//return this.memory.taskCount[task]
+	}
+		
+	Room.prototype.setTaskCount = function(task, value) {
+		if (!this.memory.taskCount) this.setTaskLimits()
+		this.memory.taskCount[task] = value
+	}
+
+	Room.prototype.changeTaskCount = function(task, value) {
+		if (!this.memory.taskCount) this.setTaskLimits()
+		this.memory.taskCount[task] += value
+	}
+
+	Room.prototype.getTaskMax = function(task) {
+		if (!this.memory.taskCount) this.setTaskLimits()
+		return this.memory.taskMax[task]
+	}
+		
+	Room.prototype.setTaskMax = function(task, value) {
+		if (!this.memory.taskCount) this.setTaskLimits()
+		this.memory.taskMax[task] = value	
+	}
+		
+	Room.prototype.changeTaskMax = function(task, value) {
+		if (!this.memory.taskCount) this.setTaskLimits()
+		this.memory.taskMax[task] += value
+	}
+
 }
 
+module.exports.tasks = {}
 
 // =================================================================
 // == HOSTILE =======================================================
@@ -452,22 +469,26 @@ module.exports.canContinueGuardPost = function(person) {
 	return Game.flags.Guard1
 }
 module.exports.doGuardPost = function(person) {
-	let target = Game.flags.Guard1
+	let target = Game.getObjectById(person.memory.targetID)
+	if (!this.isValidTarget(target)) {
+		target = this.getTarget(person)
+		person.setTarget(target && target.id)
+	}
 	
-	if (typeof target != "object") {
+	if (!this.isValidTarget(target)) {
 		console.log("TRACE doGuardPost: Could not find Guard1 flag.")
+		person.setTarget(null)
 		return ERR_NOT_FOUND
 	}
-
+	
 	let range = person.pos.getRangeTo(target)
 	if(person.pos.isBorder() || range == Infinity || range > 1) {
 		person.moveTo(target)
 	}
-	
 	return OK
 }
 module.exports.getTargetToGuardPost = function(person) {
-
+	return Game.flags.Guard1
 }
 module.exports.tasks.guardPost = {
 	type:				"guardPost",
@@ -505,6 +526,8 @@ module.exports.canContinueBuild = function(person) {
 	return (person.room.find(FIND_CONSTRUCTION_SITES).length > 0)
 }
 module.exports.doBuild = function(person) {
+		return module.exports.doTaskGeneric(person, this.type, "build")
+		/*
 	let target = Game.getObjectById(person.memory.targetID)
 	if (!this.isValidTarget(target)) {
 		target = this.getTarget(person)
@@ -519,10 +542,11 @@ module.exports.doBuild = function(person) {
 	let result = person.build(target)
 	if (person.pos.isBorder() || result == ERR_NOT_IN_RANGE) {
 		person.moveTo(target)
-	} else {
+	} else if (result != OK) {
 		person.setTarget(null)
 	}
 	return OK
+	*/
 }
 module.exports.getTargetToBuild = function(person) {
 	return person.pos.findClosestByPath(FIND_CONSTRUCTION_SITES)
@@ -554,6 +578,8 @@ module.exports.canContinueMine = function(person) {
 	return this.isValidTarget(this.getTarget(person))
 }
 module.exports.doMine = function(person) {
+		return module.exports.doTaskGeneric(person, this.type, "harvest")
+		/*
 	let target = Game.getObjectById(person.memory.targetID)
 	if (!this.isValidTarget(target)) {
 		target = this.getTarget(person)
@@ -568,11 +594,12 @@ module.exports.doMine = function(person) {
 	let result = person.harvest(target)
 	if (person.pos.isBorder() || result == ERR_NOT_IN_RANGE) {
 		person.moveTo(target)
-	} else {
+	} else if (result != OK) {
 		person.setTarget(null)
 	}
 	//log.debug(result)
 	return result
+	*/
 }
 module.exports.getTargetToMine = function(person) {
 	let targets = person.room.find(FIND_MINERALS)
@@ -604,91 +631,75 @@ module.exports.tasks.mine = {
 	isValidTarget:		module.exports.isValidTargetGeneric,
 }
 
-// Harvest
-module.exports.canInterruptOthersToHarvest = function(person){
-	return false
-}
-module.exports.canStartHarvest = function(person) {
-	// Should we energize from storage?
-	if (person.room.getJobCount("feed") == 0
-			&& person.canStartTask("storeGet")
-			&& person.room.getTaskCount("energize") < person.room.getTaskMax("energize")){
-		if (person.room.find(FIND_STRUCTURES, {filter: (t) => 
-					(t.structureType == STRUCTURE_EXTENSION || t.structureType == STRUCTURE_SPAWN)
-					&& t.energy < t.energyCapacity
-				}).length > 0){
-			console.log("TRACE: do not harvest (energize spawns)")
-			return false
-		}
-		if (person.room.find(FIND_STRUCTURES, {filter: (t) => 
-					(t.structureType == STRUCTURE_TOWER)
-					&& t.energy < 0.55 * t.energyCapacity
-				}).length > 0){
-			//console.log("TRACE: do not harvest (energize tower)")
-			return false
-		}
-	}
-	
-	// Should we build from storage?
-	if (person.room.find(FIND_CONSTRUCTION_SITES).length > 0 && person.room.getTaskCount("build") < person.room.getTaskMax("build")){
-		if (person.room.find(FIND_STRUCTURES, {filter: (t) =>
-				   t.structureType == STRUCTURE_STORAGE
-				&& t.store[RESOURCE_ENERGY] > 2000
-				}).length > 0){
-			//console.log("TRACE: do not harvest (build from storage)")
-			return false
-		}
-	}
-	return this.canContinue(person)
-
-}
-module.exports.canContinueHarvest = function(person) {
-	if (_.sum(person.carry) >= person.carryCapacity) return false
-	if (person.room.name != person.memory.homeRoomName && person.ticksToLive < 90) {
-		//console.log("TRACE: "+person.name+" stop harvest in "+person.room+" (retire to home)")
-		return false
-	}
-	
-	return person.pos.findClosestByPath(FIND_SOURCES_ACTIVE)
-	//return person.room.find(FIND_SOURCES_ACTIVE).length > 0
-
-}
-module.exports.doHarvest = function(person) {
-	let target = Game.getObjectById(person.memory.targetID)
-	if (!this.isValidTarget(target)) {
-		target = this.getTarget(person)
-		person.setTarget(target && target.id)
-	}
-	
-	if (!this.isValidTarget(target)) {
-		person.setTarget(null)
-		return ERR_NOT_FOUND
-	}
-		
-	let result = person.harvest(target)
-	if (person.pos.isBorder() || result == ERR_NOT_IN_RANGE) {
-		person.moveTo(target)
-	} else {
-		person.setTarget(null)
-	}
-	return result
-
-}
-module.exports.getTargetToHarvest = function(person) {
-	return person.pos.findClosestByPath(FIND_SOURCES_ACTIVE)
-}
 module.exports.tasks.harvest = {
 	type:				"harvest",
 	weight:				10,
 	say:				"⛏",
 	useHomeRoom:		false,
 	canInterruptThis:	false,
-	canInterruptOthers:	module.exports.canInterruptOthersToHarvest,
-	canStart:			module.exports.canStartHarvest,
-	canContinue:		module.exports.canContinueHarvest,
-	doTask:				module.exports.doHarvest,
-	getTarget:			module.exports.getTargetToHarvest,
-	isValidTarget:		module.exports.isValidTargetGeneric,
+	
+	canInterruptOthers: function(person){
+		return false
+	},
+	
+	canStart: function(person) {
+		// Should we energize from storage?
+		if (person.room.getJobCount("feed") == 0
+				&& person.canStartTask("storeGet")
+				&& person.room.getTaskCount("energize") < person.room.getTaskMax("energize")){
+			if (person.room.find(FIND_STRUCTURES, {filter: (t) => 
+						(t.structureType == STRUCTURE_EXTENSION || t.structureType == STRUCTURE_SPAWN)
+						&& t.energy < t.energyCapacity
+					}).length > 0){
+				console.log("TRACE: do not harvest (energize spawns)")
+				return false
+			}
+			if (person.room.find(FIND_STRUCTURES, {filter: (t) => 
+						(t.structureType == STRUCTURE_TOWER)
+						&& t.energy < 0.55 * t.energyCapacity
+					}).length > 0){
+				//console.log("TRACE: do not harvest (energize tower)")
+				return false
+			}
+		}
+		
+		// Should we build from storage?
+		if (person.room.find(FIND_CONSTRUCTION_SITES).length > 0 && person.room.getTaskCount("build") < person.room.getTaskMax("build")){
+			if (person.room.find(FIND_STRUCTURES, {filter: (t) =>
+					   t.structureType == STRUCTURE_STORAGE
+					&& t.store[RESOURCE_ENERGY] > 2000
+					}).length > 0){
+				//console.log("TRACE: do not harvest (build from storage)")
+				return false
+			}
+		}
+		return this.canContinue(person)
+
+	},
+	
+	canContinue: function(person) {
+		if (_.sum(person.carry) >= person.carryCapacity) return false
+		if (person.room.name != person.memory.homeRoomName && person.ticksToLive < 90) {
+			//console.log("TRACE: "+person.name+" stop harvest in "+person.room+" (retire to home)")
+			return false
+		}
+		
+		return person.pos.findClosestByPath(FIND_SOURCES_ACTIVE)
+	},
+		
+	doTask: function(person) {
+		return module.exports.doTaskGeneric(person, this.type, this.type)
+	},
+	
+	getTarget: function(person) {
+		return person.pos.findClosestByPath(FIND_SOURCES_ACTIVE)
+	},
+	
+	isValidTarget: function(target, person) {
+		if (!module.exports.isValidTargetGeneric(target)) return false
+		if (!target.energy || target.energy == 0) return false
+		return true
+	},
 }
 
 // HarvestFar
@@ -760,15 +771,6 @@ module.exports.canContinueHarvestFar = function(person) {
 		return false
 	}
 	return this.isValidTarget(Game.getObjectById(person.memory.targetID)) || this.isValidTarget(this.getTarget(person))
-	
-	let targetID = person.memory.targetID
-	if (targetID && Game.getObjectById(targetID) && Game.getObjectById(targetID).energy && Game.getObjectById(targetID).energy <= 0) {
-		//console.log("TRACE: "+person.name+" stop harvestFar in "+person.room+" (source is empty)")
-		return false
-	}
-	
-	return true
-
 }
 module.exports.doHarvestFar = function(person) {
 	let target = Game.getObjectById(person.memory.targetID)
@@ -788,7 +790,7 @@ module.exports.doHarvestFar = function(person) {
 		
 	if (person.pos.isBorder() || result == ERR_NOT_IN_RANGE) {
 		person.moveTo(target)
-	} else {
+	} else if (result != OK) {
 		person.setTarget(null)
 	}
 	return result
@@ -803,7 +805,7 @@ module.exports.getTargetToHarvestFar = function(person) {
 }
 module.exports.isValidTargetToHarvestFar = function(target, person) {
 	if (!module.exports.isValidTargetGeneric(target)) return false
-	if (!target.energy) return false
+	if (!target.energy || target.energy == 0) return false
 	if (person) return true
 	let source = Memory.sources[target.id]
 	return source && source.numHarvesters < source.maxHarvesters
@@ -834,13 +836,11 @@ module.exports.canStartRepair = function(person) {
 }
 module.exports.canContinueRepair = function(person) {
 	if (person.carry.energy <= 0) return false
-	return (person.room.find(FIND_STRUCTURES, {filter: (t) =>
-		   t.hits < t.hitsMax - Math.min(50, 0.5*person.carry.energy)
-		&& t.structureType != STRUCTURE_WALL
-		&& t.structureType != STRUCTURE_RAMPART
-	}).length > 0)
+	return this.isValidTarget(this.getTarget(person))
 }
 module.exports.doRepair = function(person) {
+		return module.exports.doTaskGeneric(person, this.type, "repair")
+		/*
 	let target = Game.getObjectById(person.memory.targetID)
 	if (!this.isValidTarget(target)) {
 		target = this.getTarget(person)
@@ -855,11 +855,11 @@ module.exports.doRepair = function(person) {
 	let result = person.repair(target)
 	if (person.pos.isBorder() || result == ERR_NOT_IN_RANGE) {
 		person.moveTo(target)
-	} else {
+	} else if (result != OK) {
 		person.setTarget(null)
 	}
-	//console.log("TRACE doRepair: "+person.name+" repair "+target+" result "+result)
 	return result
+	*/
 }
 module.exports.getTargetToRepair = function(person) {
 	return person.pos.findClosestByPath(FIND_STRUCTURES, {filter: (t) =>
@@ -867,6 +867,11 @@ module.exports.getTargetToRepair = function(person) {
 		&& t.structureType != STRUCTURE_WALL
 		&& t.structureType != STRUCTURE_RAMPART
 	})
+}
+module.exports.isValidTargetToRepair = function(target, person) {
+	if (!module.exports.isValidTargetGeneric(target)) return false
+	if (!target.hits || target.hits == target.hitsMax) return false
+	return true
 }
 module.exports.tasks.repair = {
 	type:				"repair",
@@ -879,7 +884,7 @@ module.exports.tasks.repair = {
 	canContinue:		module.exports.canContinueRepair,
 	doTask:				module.exports.doRepair,
 	getTarget:			module.exports.getTargetToRepair,
-	isValidTarget:		module.exports.isValidTargetGeneric,
+	isValidTarget:		module.exports.isValidTargetToRepair,
 }
 
 // RepairCritical
@@ -890,19 +895,17 @@ module.exports.canStartRepairCritical = function(person) {
 	return this.canContinue(person)
 }
 module.exports.canContinueRepairCritical = function(person) {
-	let homeRoom = Game.rooms[person.memory.homeRoomName]
-	return (person.carry.energy > 0) && (person.room.find(FIND_STRUCTURES, {filter: (t) =>
-			   t.hits < Math.min(5000, 0.05 * t.hitsMax)
-			&& t.structureType != STRUCTURE_WALL
-			&& t.structureType != STRUCTURE_RAMPART
-		}).length > 0)
-
+	if (person.carry.energy <= 0) return false
+	return this.isValidTarget(this.getTarget(person))
 }
 module.exports.doRepairCritical = function(person) {
-	let target = person.pos.findClosestByPath(FIND_STRUCTURES, {filter: (t) =>
-		   t.hits < Math.min(5000, 0.05 * t.hitsMax)
-		&& t.structureType != STRUCTURE_WALL
-	})
+		return module.exports.doTaskGeneric(person, this.type, "repair")
+		/*
+	let target = Game.getObjectById(person.memory.targetID)
+	if (!this.isValidTarget(target)) {
+		target = this.getTarget(person)
+		person.setTarget(target && target.id)
+	}
 	
 	if (!this.isValidTarget(target)) {
 		person.setTarget(null)
@@ -912,13 +915,22 @@ module.exports.doRepairCritical = function(person) {
 	let result = person.repair(target)
 	if (person.pos.isBorder() || result == ERR_NOT_IN_RANGE) {
 		person.moveTo(target)
-	} else {
+	} else if (result != OK) {
 		person.setTarget(null)
 	}
 	return result
+	*/
 }
 module.exports.getTargetToRepairCritical = function(person) {
-
+	return person.pos.findClosestByPath(FIND_STRUCTURES, {filter: (t) =>
+		   t.hits < Math.min(5000, 0.05 * t.hitsMax)
+		&& t.structureType != STRUCTURE_WALL
+	})
+}
+module.exports.isValidTargetToRepair = function(target, person) {
+	if (!module.exports.isValidTargetGeneric(target)) return false
+	if (!target.hits || target.hits == target.hitsMax) return false
+	return true
 }
 module.exports.tasks.repairCritical = {
 	type:				"repairCritical",
@@ -931,7 +943,7 @@ module.exports.tasks.repairCritical = {
 	canContinue:		module.exports.canContinueRepairCritical,
 	doTask:				module.exports.doRepairCritical,
 	getTarget:			module.exports.getTargetToRepairCritical,
-	isValidTarget:		module.exports.isValidTargetGeneric,
+	isValidTarget:		module.exports.isValidTargetToRepair,
 }
 
 // Upgrade
@@ -946,6 +958,8 @@ module.exports.canContinueUpgrade = function(person) {
 	return person.carry.energy > 0 && person.room.controller.my
 }
 module.exports.doUpgrade = function(person) {
+		return module.exports.doTaskGeneric(person, this.type, "upgradeController")
+		/*
 	let room = Game.rooms[person.memory.homeRoomName]
 	let target = room.controller
 	
@@ -957,13 +971,14 @@ module.exports.doUpgrade = function(person) {
 	let result = person.upgradeController(target)
 	if (person.pos.isBorder() || result == ERR_NOT_IN_RANGE) {
 		person.moveTo(target)
-	} else {
+	} else if (result != OK) {
 		person.setTarget(null)
 	}
 	return result
+	*/
 }
 module.exports.getTargetToUpgrade = function(person) {
-
+	return person.room.controller
 }
 module.exports.tasks.upgrade = {
 	type:				"upgrade",
@@ -990,6 +1005,8 @@ module.exports.canContinueUpgradeFallback = function(person) {
 	return module.exports.canContinueUpgrade(person)
 }
 module.exports.doUpgradeFallback = function(person) {
+		return module.exports.doTaskGeneric(person, this.type, "upgradeController")
+		/*
 	let room = Game.rooms[person.memory.homeRoomName]
 	let target = room.controller
 	
@@ -1001,13 +1018,14 @@ module.exports.doUpgradeFallback = function(person) {
 	let result = person.upgradeController(target)
 	if (person.pos.isBorder() || result == ERR_NOT_IN_RANGE) {
 		person.moveTo(target)
-	} else {
+	} else if (result != OK) {
 		person.setTarget(null)
 	}
 	return result
+	*/
 }
 module.exports.getTargetToUpgradeFallback = function(person) {
-
+	return person.room.controller
 }
 module.exports.tasks.upgradeFallback = {
 	type:				"upgradeFallback",
@@ -1053,7 +1071,7 @@ module.exports.doWall = function(person) {
 	let result = person.repair(target)
 	if (person.pos.isBorder() || result == ERR_NOT_IN_RANGE) {
 		person.moveTo(target)
-	} else {
+	} else if (result != OK) {
 		person.setTarget(null)
 	}
 	return result
@@ -1208,20 +1226,22 @@ module.exports.tasks.energize = {
 	isValidTarget:		module.exports.isValidTargetToEnergize,
 }
 
-// Salvage
-module.exports.canInterruptOthersToSalvage = function(person){
+// Pickup
+module.exports.canInterruptOthersToPickup = function(person){
 	return (person.ticksToLive % 5 == 0 && this.canStart(person))
 }
-module.exports.canStartSalvage = function(person) {
+module.exports.canStartPickup = function(person) {
 	return this.canContinue(person)
 }
-module.exports.canContinueSalvage = function(person) {
+module.exports.canContinuePickup = function(person) {
 	if (person.room.name != person.memory.homeRoomName && person.room.memory.numHostiles > 0) return false
 	if (_.sum(person.carry) >= person.carryCapacity) return false
 	return (person.room.find(FIND_DROPPED_RESOURCES).length > 0)
 
 }
-module.exports.doSalvage = function(person) {
+module.exports.doPickup = function(person) {
+		return module.exports.doTaskGeneric(person, this.type, this.type)
+		/*
 	let target = Game.getObjectById(person.memory.targetID)
 	if (!this.isValidTarget(target)) {
 		target = this.getTarget(person)
@@ -1240,36 +1260,39 @@ module.exports.doSalvage = function(person) {
 		person.setTarget(null)
 	}
 	return result
+	*/
 }
-module.exports.getTargetToSalvage = function(person) {
+module.exports.getTargetToPickup = function(person) {
 	let target = person.pos.findClosestByPath(FIND_DROPPED_RESOURCES, {filter: (t) => t.resourceType != RESOURCE_ENERGY})
 	if (target) return target
 	
 	return person.pos.findClosestByPath(FIND_DROPPED_RESOURCES)
 }
-module.exports.tasks.salvage = {
-	type:				"salvage",
+module.exports.tasks.pickup = {
+	type:				"pickup",
 	weight:				10,
 	say:				"⛢",
 	useHomeRoom:		false,
 	canInterruptThis:	false,
-	canInterruptOthers:	module.exports.canInterruptOthersToSalvage,
-	canStart:			module.exports.canStartSalvage,
-	canContinue:		module.exports.canContinueSalvage,
-	doTask:				module.exports.doSalvage,
-	getTarget:			module.exports.getTargetToSalvage,
+	canInterruptOthers:	module.exports.canInterruptOthersToPickup,
+	canStart:			module.exports.canStartPickup,
+	canContinue:		module.exports.canContinuePickup,
+	doTask:				module.exports.doPickup,
+	getTarget:			module.exports.getTargetToPickup,
 	isValidTarget:		module.exports.isValidTargetGeneric,
 }
 
 // StoreAdd
 module.exports.canInterruptOthersToStoreAdd = function(person){
-	return (person.getTask() == "guardPost" && this.canStart(person))
+	return (_.includes(["guardPost"], person.getTask()) && this.canStart(person))
 }
 module.exports.canStartStoreAdd = function(person) {
 	if (person.getTask() == "storeGet") return false // don't immediately storeGet a withdrawl
 	if (person.getJob() == "feed" && !person.canStartTask("energize")){
-		//log.debug("%s carry=%s energy=%s", person.name, _.sum(person.carry), person.carry.RESOURCE_ENERGY)
-		if (_.sum(person.carry) == person.carry[RESOURCE_ENERGY]) return false
+		let link = Game.getObjectById(person.room.memory.linkDestinationID)
+		if ((!link || link.energy == 0) && _.sum(person.carry) == person.carry[RESOURCE_ENERGY]) {
+			return false
+		}
 	}
 	return this.canContinue(person)
 }
@@ -1291,11 +1314,13 @@ module.exports.doStoreAdd = function(person) {
 	}
 	
 	let result
-	for(let resource in person.carry ){
+	for(let resource in person.carry){
 		if (resource == RESOURCE_ENERGY && target.energy){
 			result = person.transfer(target, resource, Math.min(person.carry[resource], target.energyCapacity - target.energy ))
+			if (result == OK) break
 		} else {
 			result = person.transfer(target, resource, Math.min(person.carry[resource], target.storeCapacity - _.sum(target.store)))
+			if (result == OK) break
 		}
 	}
 	if (person.pos.isBorder() || result == ERR_NOT_IN_RANGE) {
@@ -1326,7 +1351,7 @@ module.exports.getTargetToStoreAdd = function(person) {
 			&& t.store
 			&& _.sum(t.store) < t.storeCapacity
 		}))
-	if (person.carry.RESOURCE_ENERGY > 0){
+	if (person.carry[RESOURCE_ENERGY] > 0){
 		possibleTargets = possibleTargets.concat(person.room.find(FIND_STRUCTURES, { filter: (t) => 
 				   t.structureType == STRUCTURE_LINK
 				&& t.energy < t.energyCapacity

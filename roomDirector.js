@@ -82,7 +82,7 @@ Room.prototype.doSpawns = function(){
 				for (let sourceID in Memory.sources) {
 					let source = Game.getObjectById(sourceID)
 					if (source) {
-						maxWorkers += source.energyCapacity / Math.max(1000, 0.5 * this.energyCapacityAvailable)
+						maxWorkers += source.energyCapacity / 1000
 					}
 				}
 				room.memory.maxWorkers = Math.round(maxWorkers)
@@ -99,9 +99,6 @@ Room.prototype.doSpawns = function(){
 	if (!spawner) return ERR_NOT_OWNER
 	if (this.memory.isGrowing == undefined) this.memory.isGrowing = true
 	
-	//console.log("TRACE: "+numWorkers+"/"+this.memory.maxWorkers+" people in "+this.name)
-	
-	//this.memory.isGrowing = true
 	this.checkIsGrowing()
 	
 	let personName = ""
@@ -111,6 +108,10 @@ Room.prototype.doSpawns = function(){
 		spawner.recycleCreep(recyclePeople[i])
 	}
 	
+	// stop if we're already spawning something
+	if (spawner.spawning) return ERR_BUSY
+	
+	// count people per job
 	let numDoingJob = {}
 	for (let jobName in Memory.defaultJobPriorities){
 		numDoingJob[jobName] = 0
@@ -122,8 +123,6 @@ Room.prototype.doSpawns = function(){
 		}
 	}
 	
-	if (spawner.spawning) return ERR_BUSY
-	
 	// Scouts
 	for (let roomName in Memory.scouts) {
 		//console.log("TRACE: Memory.scouts["+roomName+"]="+Memory.scouts[roomName])
@@ -134,14 +133,7 @@ Room.prototype.doSpawns = function(){
 	}
 	
 	if (this.energyCapacityAvailable >= 550 && !this.memory.isGrowing){
-		let roomHasStorage = this.find(FIND_STRUCTURES, {filter: (t) => 
-				   t.structureType == STRUCTURE_CONTAINER || t.structureType == STRUCTURE_STORAGE
-				}).length > 0
-		if (roomHasStorage && numDoingJob["feed"] < this.getJobMax("feed")){
-			return this.createPerson("feed")
-		}
-		
-		let jobs = ["attackRanged", "attackMelee", "heal"]
+		let jobs = ["feed", "attackRanged", "attackMelee", "heal"]
 		for (i=0; i<jobs.length; i++){
 			if (numDoingJob[jobs[i]] < this.getJobMax(jobs[i])){
 				return this.createPerson(jobs[i])
@@ -211,7 +203,7 @@ Room.prototype.getWorstWorkerCost = function(){
 Room.prototype.getBodyParts = function(job){
 	let numWorkers = this.getNumWorkers()
 	let scale = 1
-	let maxWorkerCost = this.energyCapacityAvailable * (scale * (numWorkers+1) / this.memory.maxWorkers)
+	let maxWorkerCost = Math.min(3000, this.energyCapacityAvailable) * (scale * (numWorkers+1) / this.memory.maxWorkers)
 	maxWorkerCost = Math.max(200, Math.min(maxWorkerCost, this.energyCapacityAvailable))
 	let personParts = []
 	let personCost = 0
