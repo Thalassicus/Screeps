@@ -19,6 +19,7 @@ Memory.defaultJobPriorities = {
 		{"key": "energize",  	"value": 8},
 		{"key": "goHome",	 	"value": 8},
 		{"key": "storeAdd",  	"value": 8},
+		{"key": "getHaul",  	"value": 8},
 		{"key": "storeGet",  	"value": 8},
 		{"key": "idle",      	"value": 8},
 	],
@@ -51,6 +52,7 @@ Memory.defaultJobPriorities = {
 		{"key": "pickup",   	"value": 8},
 		{"key": "energize",  	"value": 8},
 		{"key": "repairCritical","value": 8},
+		{"key": "dismantle",    "value": 8},
 		{"key": "build",     	"value": 8},
 		{"key": "upgrade",   	"value": 8},
 		{"key": "repair",    	"value": 8},
@@ -66,6 +68,7 @@ Memory.defaultJobPriorities = {
 	grow: [
 		{"key": "energize",  	"value": 8},
 		{"key": "repairCritical","value": 8},
+		{"key": "dismantle",	"value": 8},
 		{"key": "build",     	"value": 8},
 		{"key": "pickup",   	"value": 8},
 		{"key": "storeGet",  	"value": 8},
@@ -124,6 +127,7 @@ Room.prototype.setTaskLimits = function() {
 		"pickup":    	0,
 		"repairCritical": 0,
 		"energize":   	0,
+		"dismantle":   	0,
 		"build":      	0,
 		"repair":     	0,
 		"wall":    	  	0,
@@ -144,6 +148,7 @@ Room.prototype.setTaskLimits = function() {
 	this.memory.taskMax = {
 		"pickup":    	6,
 		"repairCritical": 	4,
+		"dismantle":   	6,
 		"build":      	6,
 		"repair":     	10,
 		"wall":    	  	999,
@@ -261,6 +266,70 @@ Creep.prototype.setJob = function(jobType, isJobPermanent){
 	if (this.memory.priorities != undefined){
 		this.setTask() //priorities[priorities.length-1].key)
 	}
+}
+
+Room.prototype.calculateJobMaximums = function(){
+	let room = this	
+	let storedEnergy = 0
+	let storedSum = 0
+	let storedCapacity = 0
+	let storage = room.find(FIND_STRUCTURES, {filter: (t) => t.structureType == STRUCTURE_STORAGE})[0]
+	if (storage){
+		storedEnergy = storage.store[RESOURCE_ENERGY]
+		storedSum = _.sum(storage.store)
+		storedCapacity = storage.storeCapacity
+	}
+	
+	let numWorkers = room.getNumWorkers()
+	
+	if (storedEnergy > 750000){
+		let minerals = room.find(FIND_MINERALS)[0]
+		if (minerals && minerals.mineralAmount > 500){
+			let numExtractors = room.find(FIND_MY_STRUCTURES, {filter: (t) => t.structureType == STRUCTURE_EXTRACTOR} ).length
+			room.setJobMax("mine", numExtractors)
+		}
+		/*
+		if (taskDirector.tasks.getHaul.isValidTarget(taskDirector.tasks.getHaul.getTarget())){
+			room.setJobMax("haul", 1)
+		}else{
+			room.setJobMax("haul", 0)
+		}
+		*/
+	}else{
+		room.setJobMax("mine", 0)
+		room.setJobMax("haul", 0)
+	}
+	
+	if (storedEnergy > 500000 && storedCapacity - storedSum < 5000){
+		room.setJobMax("upgrade", 2)
+	}else if (storedEnergy > 500000 && storedCapacity - storedSum < 100000){
+		room.setJobMax("upgrade", 1)
+	}else{
+		room.setJobMax("upgrade", 0)
+	}
+	
+		
+	if (storedEnergy > 10000){
+		room.setJobMax("feed", 2)
+	}else{
+		room.setJobMax("feed", 0)
+	}
+	
+	if (room.controller.level < 8 && storedEnergy > 750000){
+		/*
+		let upgraders = Math.max(1, Math.floor(0.8*numWorkers * Math.pow(storedEnergy/1000000, 2)))
+		log.trace("upgrade tasks = %s", upgraders, numWorkers, storedEnergy, storedCapacity)
+		room.setTaskMax("upgrade", upgraders)
+		*/
+		room.setTaskMax("upgrade", 0.8*numWorkers)
+	}else{
+		room.setTaskMax("upgrade", 0)
+	}
+	
+	let maxGuards = room.energyCapacityAvailable < 1800 && 2 || 1
+	room.setJobMax("attackMelee", maxGuards)
+	room.setJobMax("attackRanged", maxGuards)
+	room.setJobMax("heal", maxGuards)
 }
 
 

@@ -23,6 +23,8 @@ let stopAllScripts = false
 // Delays in ticks
 let validateDelay = 10
 
+printStatistics = function(){ return statistics.printStatistics() }
+
 module.exports.loop = function () {
 	if (stopAllScripts) return
 	
@@ -82,13 +84,15 @@ module.exports.loop = function () {
 		let roomHostiles = room.find(FIND_HOSTILE_CREEPS)
 		room.memory.numHostiles = roomHostiles.length
 		
+		let newHostile = false
 		for (i=0; i<roomHostiles.length; i++){
 			if (!Memory.hostiles.includes(roomHostiles[i].id)){
+				newHostile = true
 				Memory.hostiles.push(roomHostiles[i].id)
 			}
 		}
-		if (roomHostiles.length > 0){
-			log.info("%s hostiles appeared in %s.", roomHostiles.length, room.name)
+		if (newHostile){
+			log.info("%s hostile(s) appeared in %s.", roomHostiles.length, room.name)
 		}
 		
 		
@@ -96,11 +100,6 @@ module.exports.loop = function () {
 		
 		room.doLinks()
 		room.doTasks()
-		let result = room.doSpawns()
-		
-		if (!_.includes([OK, ERR_BUSY, ERR_NOT_ENOUGH_ENERGY], result)){
-			console.log("WARN: "+room.name+" doSpawns returned "+result+".")
-		}
 		
 		if (room.memory.repairTowerID == undefined) {
 			room.findRepairTower()
@@ -117,6 +116,15 @@ module.exports.loop = function () {
 			room.memory.level = room.controller.level
 			log.info("%s upgraded to level %s.", room, room.controller.level)
 		}
+	}
+	for (spawnName in Game.spawns){
+		let spawn = Game.spawns[spawnName]
+		let result = spawn.doSpawns()
+		
+		if (!_.includes([OK, ERR_BUSY, ERR_NOT_ENOUGH_ENERGY], result)){
+			console.log("WARN: "+spawn.name+" doSpawns returned "+result+".")
+		}
+		
 	}
 	//*/
 }
@@ -226,7 +234,7 @@ function validateRarely(){
 			}
 		}
 		if (harvesters != Memory.sources[sourceID].numHarvesters){
-			log.debug("Source %s thinks it has %s harvesters, but we counted %s.", sourceID, Memory.sources[sourceID].numHarvesters, harvesters)
+			//log.debug("Source %s thinks it has %s harvesters, but we counted %s.", sourceID, Memory.sources[sourceID].numHarvesters, harvesters)
 			Memory.sources[sourceID].numHarvesters = harvesters
 		}
 	}
@@ -238,7 +246,7 @@ Room.prototype.validate = function(){
 	if (room.controller.my){
 		room.findRepairTower()
 		room.setWallMax()
-		room.updateJobs()
+		room.calculateJobMaximums()
 	}
 	
 	if (!room.memory.taskCount) room.resetAll()
@@ -250,29 +258,27 @@ Room.prototype.validate = function(){
 		// validate task list
 		let numDoingTask = {}
 		let numDoingJob = {}
-		/*
 		for (let taskName in taskDirector.tasks){
 			numDoingTask[taskName] = 0
 		}
-		*/
 		for (let jobName in Memory.defaultJobPriorities){
 			numDoingJob[jobName] = 0
 		}
 		for (i=0; i<room.memory.people.length; i++){
 			let person = Game.creeps[room.memory.people[i]]
 			if (person) {
-				//numDoingTask[person.getTask()] += 1
+				numDoingTask[person.getTask()] += 1
 				numDoingJob[person.getJob()] += 1
 			}
 		}
-		/*
+		//*
 		for (let taskName in numDoingTask){
 			if (numDoingTask[taskName] != room.getTaskCount(taskName)){
-				console.log("WARN: "+numDoingTask[taskName]+" workers counted for "+taskName+" task, but "+room+" believes there are "+room.getTaskCount(taskName)+".")
+				//console.log("WARN: "+numDoingTask[taskName]+" workers counted for "+taskName+" task, but "+room+" believes there are "+room.getTaskCount(taskName)+".")
 				room.setTaskCount(taskName, numDoingTask[taskName])
 			}
 		}
-		*/
+		//*/
 		for (let jobName in numDoingJob){
 			if (numDoingJob[jobName] != room.getJobCount(jobName)){
 				//console.log("WARN: "+numDoingJob[jobName]+" workers counted for "+jobName+" job, but "+room+" believes there are "+room.getJobCount(jobName)+".")
@@ -280,64 +286,6 @@ Room.prototype.validate = function(){
 			}
 		}
 	}
-}
-
-Room.prototype.updateJobs = function(){
-	let room = this
-	
-	
-	let [storedEnergy, storedCapacity] = room.getStoredEnergy()
-	let numWorkers = room.getNumWorkers()
-	
-	if (storedEnergy > 250000){
-		let minerals = room.find(FIND_MINERALS)[0]
-		if (minerals && minerals.mineralAmount > 500){
-			let numExtractors = room.find(FIND_MY_STRUCTURES, {filter: (t) => t.structureType == STRUCTURE_EXTRACTOR} ).length
-			room.setJobMax("mine", numExtractors)
-			room.setJobMax("haul", numExtractors)
-		}
-	}else{
-		room.setJobMax("mine", 0)
-		room.setJobMax("haul", 0)
-	}
-	
-	room.setJobMax("feed", Math.ceil(storedEnergy / 250000 ))
-	
-	if (storedCapacity > 0 && numWorkers > 5 && room.controller.level < 8){
-		//*
-		log.trace("max upgraders=%s, numWorkers=%s storedEnergy=%s/%s",
-			Math.max(1, Math.round(0.8 * numWorkers * storedEnergy / 1000000)),
-			numWorkers,
-			storedEnergy,
-			storedCapacity
-		)
-		//*/
-		
-		log.trace("%s upgrade jobs = %s", room, Math.round(2 * storedEnergy/storedCapacity))
-		room.setJobMax("upgrade", Math.round(2 * storedEnergy/storedCapacity))
-		log.trace("%s upgrade jobs = %s", room, room.getJobMax("upgrade"))
-		room.setTaskMax("upgrade", Math.max(1, Math.min(numWorkers, Math.round(0.8 * numWorkers * storedEnergy/storedCapacity))))
-	}else{
-		room.setJobMax("upgrade", 0)
-	}
-	
-	let maxGuards = room.energyCapacityAvailable < 1800 && 2 || 1
-	room.setJobMax("attackMelee", maxGuards)
-	room.setJobMax("attackRanged", maxGuards)
-	room.setJobMax("heal", maxGuards)
-}
-
-Room.prototype.getStoredEnergy = function(){
-	let room = this
-	let energy = 0
-	let energyCapacity = 0
-	let storage = room.find(FIND_STRUCTURES, {filter: (t) => t.structureType == STRUCTURE_CONTAINER || t.structureType == STRUCTURE_STORAGE})
-	for (i=0; i<storage.length; i++){
-		//log.debug("%s energy=%s energyCapacity=%s", storage[i], storage[i].store[RESOURCE_ENERGY], storage[i].storeCapacity)
-		energy += storage[i].store[RESOURCE_ENERGY]
-		energyCapacity += storage[i].storeCapacity
-	}
-	return [energy, energyCapacity]
 }
 
 Creep.prototype.validate = function() {
@@ -354,7 +302,6 @@ Creep.prototype.validate = function() {
 		for (let spawnName in Game.spawns) {
 			person.memory.homeRoomName = Game.spawns[spawnName].room.name
 			break
-			//console.log("TRACE: "+spawnName+" room="+Game.spawns[spawnName].room)
 		}
 	}
 	if (homeRoom.memory.isGrowing && person.getJob() == "normal") {

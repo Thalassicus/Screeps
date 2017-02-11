@@ -43,7 +43,7 @@ statistics: {
 			this.printStatistics()
 		}
 		
-		let day = new Date().getHours()
+		let day = new Date().getDay()
 		if (day != Memory.day){
 			Memory.day = day
 			log.info("Sending log to email.")

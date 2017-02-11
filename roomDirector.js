@@ -16,9 +16,10 @@ module.exports = {
 
 };
 
-Room.prototype.createPerson = function(jobName, info){
-	let spawner = this.find(FIND_MY_SPAWNS)[0]
-	let [bodyParts, bodyCost] = this.getBodyParts(jobName)
+StructureSpawn.prototype.createPerson = function(jobName, info){
+	let room = this.room
+	let spawner = this
+	let [bodyParts, bodyCost] = room.getBodyParts(jobName)
 	let	personName = spawner.createCreep(bodyParts)
 	switch (personName){
 		case ERR_NOT_ENOUGH_ENERGY:
@@ -37,7 +38,7 @@ Room.prototype.createPerson = function(jobName, info){
 	
 	let person = Game.creeps[personName]
 				
-	this.memory.people.push(personName)
+	room.memory.people.push(personName)
 	person.memory.homeRoomName = person.room.name
 	person.memory.bodyCost = bodyCost
 	
@@ -55,13 +56,13 @@ Room.prototype.createPerson = function(jobName, info){
 	return OK
 }
 
-Room.prototype.doSpawns = function(){
-	let spawner = this.find(FIND_MY_SPAWNS)[0]
+StructureSpawn.prototype.doSpawns = function(){
+	let spawner = this
+	let room = this.room
 	
 	if (Game.time % 10 == 0){
-		room = this
 		if (room.controller.my){
-			let [workerParts, workerCost] = this.getBodyParts("normal")
+			let [workerParts, workerCost] = room.getBodyParts("normal")
 			let workParts = 0
 			let carryParts = 0
 			for (i=0; i<workerParts.length; i++){
@@ -75,14 +76,14 @@ Room.prototype.doSpawns = function(){
 			let workDivisor = (workParts * harvestRate)
 
 			if (room.controller.level == 1){
-				room.memory.maxWorkers = 3 * this.find(FIND_SOURCES).length
+				room.memory.maxWorkers = 3 * room.find(FIND_SOURCES).length
 			}else{
-				let maxWorkers = 3 * this.find(FIND_SOURCES).length
+				let maxWorkers = 3 * room.find(FIND_SOURCES).length
 				
 				for (let sourceID in Memory.sources) {
 					let source = Game.getObjectById(sourceID)
 					if (source) {
-						maxWorkers += source.energyCapacity / 1000
+						maxWorkers += source.energyCapacity / 1500
 					}
 				}
 				room.memory.maxWorkers = Math.round(maxWorkers)
@@ -93,13 +94,13 @@ Room.prototype.doSpawns = function(){
 	}
 	
 	// count workers
-	this.memory.people = this.memory.people || []
-	let numWorkers = this.getNumWorkers()
+	room.memory.people = room.memory.people || []
+	let numWorkers = room.getNumWorkers()
 	
 	if (!spawner) return ERR_NOT_OWNER
-	if (this.memory.isGrowing == undefined) this.memory.isGrowing = true
+	if (room.memory.isGrowing == undefined) room.memory.isGrowing = true
 	
-	this.checkIsGrowing()
+	room.checkIsGrowing()
 	
 	let personName = ""
 	
@@ -116,9 +117,10 @@ Room.prototype.doSpawns = function(){
 	for (let jobName in Memory.defaultJobPriorities){
 		numDoingJob[jobName] = 0
 	}
-	for (i=0; i<this.memory.people.length; i++){
-		let person = Game.creeps[this.memory.people[i]]
-		if (person && person.ticksToLive > Memory.retirementAge + 2*person.body.length) {
+	for (i=0; i<room.memory.people.length; i++){
+		let person = Game.creeps[room.memory.people[i]]
+		// ticksToLive is undefined until the tick AFTER a creep leaves the spawner
+		if (person && !person.ticksToLive || person.ticksToLive > Memory.retirementAge + 2*person.body.length) {
 			numDoingJob[person.getJob()] += 1
 		}
 	}
@@ -128,59 +130,59 @@ Room.prototype.doSpawns = function(){
 		//console.log("TRACE: Memory.scouts["+roomName+"]="+Memory.scouts[roomName])
 		
 		if (Memory.scouts[roomName] == "none"){
-			if (this.createPerson("scout", roomName) == OK) return OK
+			if (spawner.createPerson("scout", roomName) == OK) return OK
 		}
 	}
 	
-	if (this.energyCapacityAvailable >= 550 && !this.memory.isGrowing){
+	// high priority
+	if (room.energyCapacityAvailable >= 550 && !room.memory.isGrowing){
 		let jobs = ["feed", "attackRanged", "attackMelee", "heal"]
 		for (i=0; i<jobs.length; i++){
-			if (numDoingJob[jobs[i]] < this.getJobMax(jobs[i])){
-				return this.createPerson(jobs[i])
+			if (numDoingJob[jobs[i]] < room.getJobMax(jobs[i])){
+				//log.debug("Create new %s; numDoingJob=%s getJobCount=%s getJobMax=%s", jobs[i], numDoingJob[jobs[i]], room.getJobMax(jobs[i]), room.getJobMax(jobs[i]))
+				return spawner.createPerson(jobs[i])
 			}
 		}
 	}
 	
-	if (numWorkers > 5 && this.energyCapacityAvailable >= 650){
+	if (numWorkers > 5 && room.energyCapacityAvailable >= 650){
 		// Claimers
-		if (numDoingJob["reserve"] < this.getJobMax("reserve")){
+		if (numDoingJob["reserve"] < room.getJobMax("reserve")){
 			let target = taskDirector.tasks.reserve.getTarget()
 			//log.debug("reserve target = %s", target)
 			if (taskDirector.tasks.reserve.isValidTarget(target)){
-				let result = this.createPerson("reserve")
-				if (result == OK) {
-					//
-				}
-				log.debug("Claim %s in %s with result %s (%s/%s)",
+				let result = spawner.createPerson("reserve")
+				log.trace("Claim %s in %s with result %s (%s/%s)",
 					target,
 					target.room.name,
 					result,
 					numDoingJob["reserve"],
-					this.getJobMax("reserve")
+					room.getJobMax("reserve")
 				)
 				return result
 			}
 		}
 	}
 	
-	if (this.energyCapacityAvailable >= 550 && !this.memory.isGrowing){
+	// low priority
+	if (room.energyCapacityAvailable >= 550 && !room.memory.isGrowing){
 		let jobs = ["haul", "upgrade", "mine"]
 		for (i=0; i<jobs.length; i++){
-			if (numDoingJob[jobs[i]] < this.getJobMax(jobs[i])){
-				return this.createPerson(jobs[i])
+			if (numDoingJob[jobs[i]] < room.getJobMax(jobs[i])){
+				return spawner.createPerson(jobs[i])
 			}
 		}
 	}
 	
 	// Assign temp jobs
-	if (numWorkers < this.memory.maxWorkers) {
-		return this.createPerson(this.memory.isGrowing && "grow" || "normal")
+	if (numWorkers < room.memory.maxWorkers) {
+		return spawner.createPerson(room.memory.isGrowing && "grow" || "normal")
 	}else{
-		let [worstWorkerName, worstWorkerCost] = this.getWorstWorkerCost()
+		let [worstWorkerName, worstWorkerCost] = room.getWorstWorkerCost()
 		let worstWorker = Game.creeps[worstWorkerName]
 		if (worstWorker) {
-			let [possibleWorkerParts, possibleWorkerCost] = this.getBodyParts(worstWorker.getJob())
-			if (worstWorkerCost < possibleWorkerCost && this.energyAvailable == possibleWorkerCost){
+			let [possibleWorkerParts, possibleWorkerCost] = room.getBodyParts(worstWorker.getJob())
+			if (worstWorkerCost < possibleWorkerCost && room.energyAvailable == possibleWorkerCost){
 				console.log("DEBUG doSpawns: "+worstWorkerName+" costs "+worstWorkerCost+" (upgrade available for "+possibleWorkerCost+")")
 				Game.creeps[worstWorkerName].setJob("recycle")
 			}
@@ -209,10 +211,11 @@ Room.prototype.getWorstWorkerCost = function(){
 }
 
 Room.prototype.getBodyParts = function(job){
-	let numWorkers = this.getNumWorkers()
+	let room = this
+	let numWorkers = room.getNumWorkers()
 	let scale = 1
-	let maxWorkerCost = Math.min(3000, this.energyCapacityAvailable) * (scale * (numWorkers+1) / this.memory.maxWorkers)
-	maxWorkerCost = Math.max(200, Math.min(maxWorkerCost, this.energyCapacityAvailable))
+	let maxWorkerCost = Math.min(3500, room.energyCapacityAvailable) * (scale * (numWorkers+1) / room.memory.maxWorkers)
+	maxWorkerCost = Math.max(200, Math.min(maxWorkerCost, room.energyCapacityAvailable))
 	let personParts = []
 	let personCost = 0
 	let count = 0
@@ -322,7 +325,7 @@ Room.prototype.getBodyParts = function(job){
 			personParts.push(CARRY)
 			personParts.push(MOVE)
 			personCost += 200
-			//console.log("DEBUG getBodyParts: energy="+this.energyCapacityAvailable+" numWorkers="+numWorkers+" targetPeople="+this.memory.maxWorkers+" maxWorkerCost="+maxWorkerCost+" personCost="+personCost)
+			//console.log("DEBUG getBodyParts: energy="+room.energyCapacityAvailable+" numWorkers="+numWorkers+" targetPeople="+room.memory.maxWorkers+" maxWorkerCost="+maxWorkerCost+" personCost="+personCost)
 			//console.log("DEBUG                   personParts="+personParts)
 			break
 			
@@ -341,7 +344,7 @@ Room.prototype.getBodyParts = function(job){
 			personParts.push(CARRY)
 			personParts.push(MOVE)
 			personCost += 200
-			//console.log("DEBUG getBodyParts: energy="+this.energyCapacityAvailable+" numWorkers="+numWorkers+" targetPeople="+this.memory.maxWorkers+" maxWorkerCost="+maxWorkerCost+" personCost="+personCost)
+			//console.log("DEBUG getBodyParts: energy="+room.energyCapacityAvailable+" numWorkers="+numWorkers+" targetPeople="+room.memory.maxWorkers+" maxWorkerCost="+maxWorkerCost+" personCost="+personCost)
 			//console.log("DEBUG                   personParts="+personParts)
 			break
 			
@@ -436,6 +439,21 @@ Room.prototype.getNumWorkers = function(){
 		}
 	}
 	return numWorkers
+}
+
+Room.prototype.getStoredEnergy = function(){
+	let room = this
+	let energy = 0
+	let storageSum = 0
+	let storageCapacity = 0
+	let storage = room.find(FIND_STRUCTURES, {filter: (t) => t.structureType == STRUCTURE_STORAGE})
+	for (i=0; i<storage.length; i++){
+		//log.debug("%s energy=%s storageCapacity=%s", storage[i], storage[i].store[RESOURCE_ENERGY], storage[i].storeCapacity)
+		energy += storage[i].store[RESOURCE_ENERGY]
+		storageSum += _.sum(storage[i].store)
+		storageCapacity += storage[i].storeCapacity
+	}
+	return [energy, storageSum, storageCapacity]
 }
 
 Room.prototype.findRepairTower = function(){
@@ -546,10 +564,15 @@ Room.prototype.repairWithTowers = function() {
 Room.prototype.countHarvestSpots = function(){
 	let sources = this.find(FIND_SOURCES)
 	let harvestSpots = 0
-	if (_.includes(["W8N3"], this.name)){//sources.length > 1) { // HARDCODE reserved rooms
+	//*
+	if (_.includes(["W8N3", "W7N4", "W6N3"], this.name)){//sources.length > 1) { // HARDCODE reserved rooms
+		//log.debug("Reserve %s", this)
 		this.memory.reserve = true
 	}else if (this.memory.reserve){
 		delete this.memory.reserve
+	}//*/
+	if (this.memory.reserve){
+		//delete this.memory.reserve
 	}
 	for (i=0; i<sources.length; i++){
 		let source = sources[i]
